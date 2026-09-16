@@ -49,6 +49,7 @@ describe("perception frame", () => {
     assert.equal(frame.zone?.class, "residential");
     assert.ok(frame.overlays.includes("wildlife"));
     assert.equal(frame.look.lng, -106.6504);
+    assert.equal(frame.mutation, null);
     assert.match(formatDecimal(-106.6504, 35.0844), /35\.08440/);
   });
 

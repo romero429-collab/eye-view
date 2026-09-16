@@ -10,6 +10,8 @@ type ObjectPanelProps = {
   object: MapObject | null;
   frame?: PerceptionFrame | null;
   onClose: () => void;
+  onConfirm?: (patchId: string) => void;
+  onDismiss?: (patchId: string) => void;
   showKey?: boolean;
   className?: string;
 };
@@ -72,6 +74,15 @@ function RealityFrame({ frame }: { frame: PerceptionFrame }) {
             </dd>
           </div>
         ) : null}
+        {frame.mutation ? (
+          <div className="flex items-baseline justify-between gap-3 py-2">
+            <dt className="text-xs uppercase tracking-label text-subtle">This tick</dt>
+            <dd className="text-right text-sm font-medium text-fg">
+              {frame.mutation.immediate ? "Immediate" : "Queued"}
+              {frame.mutation.class ? ` · ${frame.mutation.class}` : ""}
+            </dd>
+          </div>
+        ) : null}
         {frame.movement ? (
           <div className="flex items-baseline justify-between gap-3 py-2">
             <dt className="text-xs uppercase tracking-label text-subtle">Move</dt>
@@ -118,6 +129,8 @@ export function ObjectPanel({
   object,
   frame,
   onClose,
+  onConfirm,
+  onDismiss,
   showKey = true,
   className,
 }: ObjectPanelProps) {
@@ -184,6 +197,20 @@ export function ObjectPanel({
             ) : null}
             {object.source ? (
               <p className="mt-3 text-xs text-subtle">{object.source}</p>
+            ) : null}
+            {object.patchId && object.status === "proposed" && (onConfirm || onDismiss) ? (
+              <div className="mt-3 flex gap-1.5">
+                {onConfirm ? (
+                  <Button type="button" size="sm" onClick={() => onConfirm(object.patchId!)}>
+                    Confirm
+                  </Button>
+                ) : null}
+                {onDismiss ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => onDismiss(object.patchId!)}>
+                    Dismiss
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
             {object.lng != null && object.lat != null ? (
               <p className="mt-1 font-mono text-xs text-subtle">

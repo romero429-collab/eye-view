@@ -39,11 +39,12 @@ export function HierarchyPanel({
   const needScale = hits.some((hit) => hit.id === "need-scale");
   const shownLabel = needScale ? undefined : zoneLabel;
   const iom = hits.some((hit) => hit.id.startsWith("iom-"));
+  const mutating = hits.some((hit) => hit.id === "this-tick" || hit.id === "ripple-queue");
   return (
     <div className="max-w-[min(100%,18rem)] rounded-[var(--radius-md)] border border-border bg-surface p-2 shadow-[var(--shadow-panel)] md:max-w-56">
       <p className="flex items-center gap-1.5 px-1.5 pt-0.5 pb-1 text-xs font-medium uppercase tracking-label text-subtle">
         <GitBranch className="size-3" strokeWidth={1.75} />
-        {iom ? "Internet of Minds" : "Zoning coordinates"}
+        {mutating ? "This tick" : iom ? "Internet of Minds" : "Zoning coordinates"}
         {calibration ? (
           <span className="ml-auto font-mono normal-case tracking-normal text-muted">
             {formatScore(calibration.score)}

@@ -145,6 +145,8 @@ function matchFrom(swatches: ZoneSwatch[], fallback: string): ExpressionSpecific
 
 export const ZONE_FILL_COLOR = matchFrom(LANDUSE_SWATCHES, "#5a6a62");
 export const COVER_FILL_COLOR = matchFrom(COVER_SWATCHES, "#3d5c48");
+/** Learned patches can be land-use or cover — one match so a park reclass is green, not gray. */
+export const ZONE_MEMORY_COLOR = matchFrom(ZONE_SWATCHES, "#5a6a62");
 
 export function zoneLabel(klass: string, fallback = "Land-use zone"): string {
   return ZONE_LABEL[klass] ?? (klass ? klass.replace(/_/g, " ") : fallback);

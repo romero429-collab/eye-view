@@ -39,6 +39,7 @@ import {
   loadPatches,
   mergeAt,
   persistPatches,
+  rememberObject,
   resolveZone,
   writePatch,
   type ZoneEdit,
@@ -127,11 +128,31 @@ export function AtlasApp() {
     setPatches(next);
   }, []);
 
+  const confirmLearned = useCallback(
+    (id: string) => {
+      const next = confirmPatch(patches, id);
+      commitPatches(next);
+      setPicked((prev) => (prev ? rememberObject({ ...prev, status: "accepted" }, next) : prev));
+      setLiveNote("Confirmed — rule engine updated this tick");
+    },
+    [patches, commitPatches],
+  );
+
+  const dismissLearned = useCallback(
+    (id: string) => {
+      const next = dismissPatch(patches, id);
+      commitPatches(next);
+      setPicked((prev) => (prev?.patchId === id ? null : prev));
+      setLiveNote("Dismissed — that block stays independent");
+    },
+    [patches, commitPatches],
+  );
+
   const applyEdit = useCallback(
     (action: ZoneEdit, klass: string | null, source: "walk" | "query", note?: string, at?: { lng: number; lat: number }) => {
       const point = at ?? (scene ? { lng: scene.lng, lat: scene.lat } : DISTRICT_VIEW);
       setOverlays((prev) => ({ ...prev, zoning: true, metric: false }));
-      commitPatches(
+      const next =
         action === "merge"
           ? mergeAt(patches, point.lng, point.lat, klass)
           : writePatch(patches, {
@@ -147,11 +168,34 @@ export function AtlasApp() {
                     ? "Subdivided at look-at"
                     : `Taught ${klass ?? "district"}`),
               source,
-            }),
-      );
+            });
+      commitPatches(next);
+      if (source !== "walk") {
+        const resolved = resolveZone(next, point.lng, point.lat, klass, klass ?? "District");
+        onPickObject({
+          kind: "zone",
+          title: resolved.label,
+          detail: resolved.immediate
+            ? "Mutable district. Applied immediately at this look-at. Adjacent blocks stay independent until you confirm."
+            : resolved.note || "Tagged this look-at.",
+          layer: "Zoning",
+          source: "Query",
+          lng: point.lng,
+          lat: point.lat,
+          patchId: (resolved.patch ?? resolved.flags[0])?.id,
+          status: (resolved.patch ?? resolved.flags[0])?.status,
+          mutable: true,
+          facts: [
+            { label: "Layer", value: "Zoning" },
+            { label: "Status", value: resolved.immediate ? "Applied now" : "Proposed" },
+            resolved.queued > 0 ? { label: "Queued", value: `${resolved.queued} adjacent` } : null,
+            { label: "Mutation", value: resolved.immediate ? "Immediate" : "Queued" },
+          ].filter((row): row is { label: string; value: string } => Boolean(row)),
+        });
+      }
       setLiveNote(
         action === "reclass"
-          ? `Taught ${klass ?? "this"} at the look-at`
+          ? `Taught ${klass ?? "this"} at the look-at — rule engine updated this tick`
           : action === "split"
             ? "Split a local district here"
             : action === "merge"
@@ -159,7 +203,7 @@ export function AtlasApp() {
               : "Tagged this look-at",
       );
     },
-    [scene, patches, commitPatches],
+    [scene, patches, commitPatches, onPickObject],
   );
 
   useEffect(() => {
@@ -402,6 +446,8 @@ export function AtlasApp() {
             <WalkHud
               zoneLabel={learned?.label ?? scene?.zoneLabel ?? ""}
               learned={learned?.patch ? learned.label : null}
+              queued={learned?.queued ?? 0}
+              immediate={Boolean(learned?.immediate)}
               reclass={reclass}
               onReclassChange={setReclass}
               onReclass={() => applyEdit("reclass", reclass, "walk")}
@@ -468,8 +514,8 @@ export function AtlasApp() {
                       setViewMode("walk");
                       window.setTimeout(() => mapRef.current?.enterWalk(), 40);
                     }}
-                    onConfirm={(id) => commitPatches(confirmPatch(patches, id))}
-                    onDismiss={(id) => commitPatches(dismissPatch(patches, id))}
+                    onConfirm={confirmLearned}
+                    onDismiss={dismissLearned}
                     calibration={perception.calibration}
                     skillCount={perception.minds.skills}
                   />
@@ -511,6 +557,8 @@ export function AtlasApp() {
             object={picked}
             frame={perception}
             onClose={() => setPicked(null)}
+            onConfirm={confirmLearned}
+            onDismiss={dismissLearned}
             className="hidden w-80 shrink-0 lg:flex"
           />
         ) : hudOpen ? (
@@ -536,6 +584,8 @@ export function AtlasApp() {
             object={picked}
             frame={perception}
             onClose={() => setPicked(null)}
+            onConfirm={confirmLearned}
+            onDismiss={dismissLearned}
             showKey={false}
             className="border-l-0"
           />

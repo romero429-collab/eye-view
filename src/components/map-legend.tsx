@@ -132,6 +132,22 @@ export function OverlayKey({
               </li>
             ))}
           </ul>
+          <p className="mt-2 mb-1.5 text-xs font-medium uppercase tracking-label text-subtle">
+            Mutable
+          </p>
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-1">
+            <li className="flex items-center gap-1.5 text-xs text-muted">
+              <span className="size-2.5 shrink-0 rounded-sm border border-fg bg-primary/50" />
+              Applied now
+            </li>
+            <li className="flex items-center gap-1.5 text-xs text-muted">
+              <span
+                className="size-2.5 shrink-0 rounded-sm border border-dashed"
+                style={{ borderColor: "#d4a054" }}
+              />
+              Queued next door
+            </li>
+          </ul>
         </>
       ) : null}
       {ramps.map((ramp) => {

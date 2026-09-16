@@ -2,7 +2,7 @@ import { altitudeFromZoom, type OverlayId, type OverlayState } from "./basemaps.
 import type { AttentionMap } from "./attention.ts";
 import type { MapObject } from "./map-types.ts";
 import type { RuleHit, SceneSample } from "./zoning-rules.ts";
-import { resolveZone, type ZonePatch } from "./zone-memory.ts";
+import { resolveZone, lastMutation, type ZonePatch } from "./zone-memory.ts";
 import { perceiveMovement, type TransitMood } from "./transit-sense.ts";
 import { type Consequence } from "./iom.ts";
 import { syncMinds, type Calibration } from "./minds.ts";
@@ -38,6 +38,12 @@ export type PerceptionFrame = {
     matter: string[];
   };
   calibration: Calibration;
+  mutation: {
+    action: string;
+    class: string | null;
+    immediate: boolean;
+    queued: number;
+  } | null;
 };
 
 export function formatDecimal(lng: number, lat: number): string {
@@ -92,6 +98,7 @@ export function buildPerception(args: {
       })()
     : null;
   const minds = syncMinds({ scene, overlays, patches, now });
+  const tick = scene ? lastMutation(patches, scene.lng, scene.lat, now) : null;
   return {
     t: now,
     look: {
@@ -122,6 +129,14 @@ export function buildPerception(args: {
       matter: minds.calibration.matter,
     },
     calibration: minds.calibration,
+    mutation: tick
+      ? {
+          action: tick.action,
+          class: tick.class,
+          immediate: tick.immediate,
+          queued: tick.queued,
+        }
+      : null,
   };
 }
 

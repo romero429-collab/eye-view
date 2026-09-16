@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_OVERLAYS } from "./basemaps.ts";
+import { writePatch } from "./zone-memory.ts";
 import {
   coordinateToggle,
   evaluateRules,
@@ -191,5 +192,36 @@ describe("evaluateRules", () => {
     assert.ok(hits.some((h) => h.id === "plants-paved" && h.effect === "avoid"));
     assert.ok(hits.some((h) => h.id === "wild-plants" && h.effect === "prefer"));
     assert.ok(hits.some((h) => h.id === "plants-transit"));
+  });
+
+  it("feeds a walk reclass into the hierarchy this tick and queues neighbors", () => {
+    const patches = writePatch([], {
+      lng: -106.65,
+      lat: 35.08,
+      action: "reclass",
+      class: "residential",
+      source: "walk",
+    });
+    const hits = evaluateRules({
+      overlays: { ...DEFAULT_OVERLAYS, zoning: true },
+      scene: {
+        lng: -106.65,
+        lat: 35.08,
+        zoom: 14,
+        bearing: 0,
+        pitch: 0,
+        zoneClass: "industrial",
+        zoneLabel: "Industrial",
+        quakes: 0,
+        transit: 0,
+        wildlife: 0,
+        events: 0,
+        alerts: 0,
+      },
+      patches,
+    });
+    assert.ok(hits.some((h) => h.id === "container" && /learned residential/i.test(h.title)));
+    assert.ok(hits.some((h) => h.id === "this-tick" && h.effect === "adapt"));
+    assert.ok(hits.some((h) => h.id === "ripple-queue" && h.effect === "queue"));
   });
 });

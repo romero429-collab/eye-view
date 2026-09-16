@@ -1,5 +1,6 @@
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { ZONE_SWATCHES, zoneLabel } from "./basemaps.ts";
+import type { MapObject } from "./map-types.ts";
 import { destination, haversineMeters } from "./spatial.ts";
 
 export type ZoneEdit = "reclass" | "tag" | "split" | "merge" | "flag";
@@ -31,6 +32,86 @@ export type ResolvedZone = {
   queued: number;
   immediate: boolean;
 };
+
+/** How long a local commit stays "this tick" in the hierarchy. */
+export const TICK_MS = 12_000;
+
+export type MutationTick = {
+  id: string;
+  action: ZoneEdit;
+  class: string | null;
+  immediate: true;
+  queued: number;
+  t: number;
+};
+
+export function lastMutation(
+  patches: ZonePatch[],
+  lng: number,
+  lat: number,
+  now = Date.now(),
+): MutationTick | null {
+  const here = patchesAt(patches, lng, lat)
+    .filter((p) => p.status === "accepted" && now - p.t < TICK_MS)
+    .sort((a, b) => b.t - a.t);
+  const origin = here[0];
+  if (!origin) return null;
+  const queued = patches.filter((p) => p.parentId === origin.id && p.status === "proposed").length;
+  return {
+    id: origin.id,
+    action: origin.action,
+    class: origin.class,
+    immediate: true,
+    queued,
+    t: origin.t,
+  };
+}
+
+/** Click / inspector path. OSM class is the prior; a learned patch is the posterior. */
+export function rememberObject(object: MapObject, patches: ZonePatch[]): MapObject {
+  if (object.kind !== "zone" || object.lng == null || object.lat == null) return object;
+  const osmClass = object.facts?.find((f) => f.label === "class")?.value ?? null;
+  const resolved = resolveZone(patches, object.lng, object.lat, osmClass, object.title);
+  const active = resolved.patch ?? resolved.flags[0] ?? null;
+  if (!active) return object;
+  const klass = resolved.class ?? osmClass;
+  const facts = (object.facts ?? []).filter(
+    (f) => f.label !== "class" && f.label !== "Status" && f.label !== "Queued" && f.label !== "Mutation",
+  );
+  if (klass) facts.push({ label: "class", value: klass });
+  const queuedRipple = active.source === "ripple";
+  facts.push({
+    label: "Status",
+    value: active.status === "accepted" ? "Applied now" : queuedRipple ? "Queued next door" : "Proposed",
+  });
+  if (resolved.queued > 0) facts.push({ label: "Queued", value: `${resolved.queued} adjacent` });
+  facts.push({
+    label: "Mutation",
+    value: active.status === "accepted" ? "Immediate" : "Queued",
+  });
+  return {
+    ...object,
+    title: resolved.label || object.title,
+    detail:
+      active.status === "accepted"
+        ? "Mutable district. Applied immediately at this look-at. Adjacent blocks stay independent until you confirm."
+        : queuedRipple
+          ? active.note || "Queued from a connected district. Independent until you confirm."
+          : active.note || "Live feed proposed this change. Confirm to teach the map.",
+    source:
+      active.source === "walk"
+        ? "Ground walk"
+        : active.source === "query"
+          ? "Query"
+          : active.source === "ripple"
+            ? "Queued neighbor"
+            : "Live evidence",
+    patchId: active.id,
+    status: active.status,
+    mutable: true,
+    facts,
+  };
+}
 
 export const MEMORY_KEY = "kiyoshi.eye.zones.v1";
 export const BLOCK_M = 90;

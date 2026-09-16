@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   absorbLive,
   confirmPatch,
+  lastMutation,
   mergeAt,
+  rememberObject,
   resolveZone,
   writePatch,
   PROMOTE_WEIGHT,
@@ -54,6 +56,37 @@ describe("zone memory", () => {
     assert.equal(after.immediate, true);
     const extra = confirmed.filter((p) => p.source === "ripple" && p.generation === 1);
     assert.ok(extra.length <= 4);
+  });
+
+  it("rewrites an OSM zone click to the learned class so the inspector cannot lie", () => {
+    const patches = writePatch([], {
+      lng: -106.65,
+      lat: 35.084,
+      action: "reclass",
+      class: "residential",
+      source: "walk",
+    });
+    const clicked = rememberObject(
+      {
+        kind: "zone",
+        title: "Industrial",
+        detail: "OpenStreetMap land-use",
+        layer: "Zoning",
+        lng: -106.65,
+        lat: 35.084,
+        facts: [{ label: "class", value: "industrial" }],
+      },
+      patches,
+    );
+    assert.match(clicked.title, /residential/i);
+    assert.equal(clicked.status, "accepted");
+    assert.equal(clicked.mutable, true);
+    assert.equal(clicked.facts?.find((f) => f.label === "class")?.value, "residential");
+    assert.equal(clicked.facts?.find((f) => f.label === "Mutation")?.value, "Immediate");
+    const tick = lastMutation(patches, -106.65, 35.084);
+    assert.ok(tick);
+    assert.equal(tick.immediate, true);
+    assert.equal(tick.queued, 4);
   });
 
   it("merges two accepted cells into one larger district", () => {

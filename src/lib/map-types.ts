@@ -37,6 +37,10 @@ export type MapObject = {
   trend?: number[];
   lng?: number;
   lat?: number;
+  /** Zone memory — present when this pick is a mutable district. */
+  patchId?: string;
+  status?: "proposed" | "accepted";
+  mutable?: boolean;
 };
 
 export type LiveHover = {

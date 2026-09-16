@@ -6,6 +6,8 @@ import { EDIT_CLASSES } from "@/lib/zone-memory";
 type WalkHudProps = {
   zoneLabel: string;
   learned?: string | null;
+  queued?: number;
+  immediate?: boolean;
   reclass: string;
   onReclassChange: (id: string) => void;
   onTag: () => void;
@@ -26,6 +28,8 @@ const PAD: Array<{ code: string; label: string; className: string }> = [
 export function WalkHud({
   zoneLabel,
   learned,
+  queued = 0,
+  immediate = false,
   reclass,
   onReclassChange,
   onTag,
@@ -50,6 +54,12 @@ export function WalkHud({
               Stand
             </Button>
           </div>
+          {immediate || queued > 0 ? (
+            <p className="text-xs leading-snug text-muted">
+              {immediate ? "Applied now" : "OSM prior"}
+              {queued > 0 ? ` · ${queued} queued next door` : ""}
+            </p>
+          ) : null}
           <div className="flex flex-wrap items-center gap-1">
             <select
               aria-label="Reclass this district"

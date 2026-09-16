@@ -44,6 +44,7 @@ import {
   TILES,
   TILE_ATTRIBUTION,
   ZONE_FILL_COLOR,
+  ZONE_MEMORY_COLOR,
   ZONE_SWATCHES,
   radarTileUrl,
   type OverlayState,
@@ -58,7 +59,7 @@ import {
   quakeCircleColor,
 } from "@/lib/heat";
 import { DISTRICT_ZOOM, radarDimFactor, type SceneSample } from "@/lib/zoning-rules";
-import { patchesToGeoJSON, type ZonePatch } from "@/lib/zone-memory";
+import { patchesToGeoJSON, rememberObject, type ZonePatch } from "@/lib/zone-memory";
 import {
   detourCollection,
   loadCorridors,
@@ -491,12 +492,12 @@ function buildStyle(): StyleSpecification {
         source: "memory",
         layout: { visibility: "none" },
         paint: {
-          "fill-color": ZONE_FILL_COLOR,
+          "fill-color": ZONE_MEMORY_COLOR,
           "fill-opacity": [
             "case",
             ["==", ["get", "status"], "proposed"],
-            0.22,
-            0.48,
+            0.28,
+            0.62,
           ],
         },
       },
@@ -504,15 +505,23 @@ function buildStyle(): StyleSpecification {
         id: "memory-line",
         type: "line",
         source: "memory",
+        filter: ["==", ["get", "status"], "accepted"],
         layout: { visibility: "none" },
         paint: {
-          "line-color": [
-            "case",
-            ["==", ["get", "status"], "proposed"],
-            "#d4a054",
-            "#e7eaed",
-          ],
+          "line-color": "#e7eaed",
+          "line-width": 1.6,
+        },
+      },
+      {
+        id: "memory-queue",
+        type: "line",
+        source: "memory",
+        filter: ["==", ["get", "status"], "proposed"],
+        layout: { visibility: "none" },
+        paint: {
+          "line-color": "#d4a054",
           "line-width": 1.4,
+          "line-dasharray": [1.6, 1.4],
         },
       },
       {
@@ -1107,6 +1116,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "zoning-point",
     "memory-fill",
     "memory-line",
+    "memory-queue",
   ],
   health: ["health"],
   radar: ["radar"],
@@ -1137,6 +1147,7 @@ const POINT_HIT_LAYERS = [
 ];
 
 const AREA_HIT_LAYERS = [
+  "memory-fill",
   "plots-line",
   "plots-fill",
   "otm-building",
@@ -1146,7 +1157,6 @@ const AREA_HIT_LAYERS = [
   "otm-zone",
   "otm-park",
   "otm-cover",
-  "memory-fill",
   "osm-line",
   "osm-fill",
   "otm-rail",
@@ -1458,6 +1468,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       [p.x + 48, p.y + 48],
     ];
     const zoneHits = [
+      ...(map.getLayer("memory-fill")
+        ? map.queryRenderedFeatures(box, { layers: ["memory-fill"] }).filter((f) => {
+            const status = String(f.properties?.status ?? "");
+            return status === "accepted";
+          })
+        : []),
       ...(map.getLayer("otm-zone")
         ? map.queryRenderedFeatures(box, { layers: ["otm-zone"] })
         : []),
@@ -1736,7 +1752,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
 
         const pickObject = (object: MapObject) => {
           onSelect(null);
-          pickRef.current?.(withGround(object, groundName));
+          const grounded = withGround(object, groundName);
+          pickRef.current?.(
+            grounded.kind === "zone"
+              ? rememberObject(grounded, patchesRef.current)
+              : grounded,
+          );
         };
 
         const inspectCountryHere = () => {

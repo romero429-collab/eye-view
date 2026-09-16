@@ -77,7 +77,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   zoning: {
     icon: Grid2x2,
     usage:
-      "OSM land-use (residential, commercial, industrial, civic, recreation, construction, quarry/landfill) plus landcover (wood, grass, farmland, pasture) via OpenFreeMap. Country metric fades so zone color is the fill.",
+      "OSM land-use (residential, commercial, industrial, civic, recreation, construction, quarry/landfill) plus landcover (wood, grass, farmland, pasture) via OpenFreeMap. Walk or ask to mutate a district: the look-at commits immediately; neighbors queue as dashed blocks and stay independent until you confirm. Country metric fades so zone color is the fill.",
   },
   health: {
     icon: HeartPulse,

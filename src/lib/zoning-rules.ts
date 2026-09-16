@@ -1,6 +1,6 @@
 import type { OverlayId, OverlayState } from "./basemaps.ts";
 import { ZONE_SWATCHES, zoneLabel } from "./basemaps.ts";
-import { resolveZone, type ZonePatch } from "./zone-memory.ts";
+import { resolveZone, lastMutation, type ZonePatch } from "./zone-memory.ts";
 import { perceiveMovement } from "./transit-sense.ts";
 import { consequenceToEffect, orchestrate } from "./iom.ts";
 
@@ -160,8 +160,22 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
       id: "ripple-queue",
       effect: "queue",
       title: `${learned?.queued} adjacent block${learned && learned.queued === 1 ? "" : "s"} queued`,
-      detail: "The rule engine already sees the local commit. Neighbors wait in the queue.",
+      detail: "The rule engine already sees the local commit. Neighbors wait in the queue — they stay independent until you confirm.",
       local: false,
+    });
+  }
+
+  const tick = scene ? lastMutation(patches, scene.lng, scene.lat) : null;
+  if (tick && zoned && !tooHigh) {
+    hits.push({
+      id: "this-tick",
+      effect: "adapt",
+      title: `Applied ${tick.class ? zoneLabel(tick.class).toLowerCase() : "this district"} this tick`,
+      detail: tick.queued
+        ? `Walk/query committed immediately. ${tick.queued} connected block${tick.queued === 1 ? "" : "s"} queued — a change never silently overwrites the next district.`
+        : "Walk/query committed immediately. No adjacent blocks to queue.",
+      local: true,
+      patchId: tick.id,
     });
   }
 
