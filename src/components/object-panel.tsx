@@ -58,8 +58,18 @@ function RealityFrame({ frame }: { frame: PerceptionFrame }) {
         </div>
         {frame.zone ? (
           <div className="flex items-baseline justify-between gap-3 py-2">
-            <dt className="text-xs uppercase tracking-label text-subtle">Zone</dt>
+            <dt className="text-xs uppercase tracking-label text-subtle">
+              {frame.zone.learned ? "Learned" : "Zone"}
+            </dt>
             <dd className="text-sm font-medium text-fg">{frame.zone.label}</dd>
+          </div>
+        ) : null}
+        {frame.zone && frame.zone.queued > 0 ? (
+          <div className="flex items-baseline justify-between gap-3 py-2">
+            <dt className="text-xs uppercase tracking-label text-subtle">Queued</dt>
+            <dd className="text-sm font-medium text-fg">
+              {frame.zone.queued} adjacent
+            </dd>
           </div>
         ) : null}
         {frame.country ? (

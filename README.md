@@ -25,7 +25,7 @@ Type what you want instead of hunting toggles. Chips under the bar run the same 
 - `this is residential` — teaches the look-at; a local patch overrides OSM
 - `split this zone` — subdivides the district under the crosshair
 
-Walk the street to **Tag / Reclass / Split / Merge**. Live wildlife, transit, and events propose reclassifications; Confirm teaches the map, Dismiss drops the proposal. Two agreeing live samples promote a patch on their own.
+Walk the street to **Tag / Reclass / Split / Merge**. The block underfoot commits immediately; four adjacent blocks queue as proposals — they stay independent until you confirm. Live wildlife, transit, and events propose reclassifications the same way.
 
 From orbit, district queries fly into Albuquerque so land-use tiles actually load. Zoning is the coordinating container: wildlife avoids industrial, extractive, and seismic; transit snaps to streets; radar dims the other live dots.
 

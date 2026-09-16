@@ -155,6 +155,8 @@ describe("evaluateRules", () => {
           status: "proposed",
           weight: 1,
           t: 1,
+          parentId: null,
+          generation: 0,
         },
       ],
     });

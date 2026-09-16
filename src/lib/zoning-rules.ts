@@ -4,7 +4,7 @@ import { resolveZone, type ZonePatch } from "./zone-memory.ts";
 
 export type ZoneClassId = (typeof ZONE_SWATCHES)[number]["id"] | "unknown";
 
-export type RuleEffect = "container" | "avoid" | "snap" | "dim" | "prefer";
+export type RuleEffect = "container" | "avoid" | "snap" | "dim" | "prefer" | "queue";
 
 export type RuleHit = {
   id: string;
@@ -104,7 +104,7 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
         ? `Learned ${labeled.toLowerCase()} contains the view`
         : `${labeled} contains the view`,
       detail: learnedOverride
-        ? "A local patch overrides OSM here. Tag, split, or merge on the street to refine it."
+        ? "Applied immediately at this look-at. Adjacent blocks are queued — they stay independent until you confirm."
         : "Zoning is the coordinating container. Other feeds snap, avoid, or dim inside this district.",
       local: true,
       patchId: learned?.patch?.id,
@@ -124,16 +124,30 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
   }
 
   for (const flag of learned?.flags ?? []) {
+    const ripple = flag.source === "ripple";
     hits.push({
       id: `learn-${flag.id}`,
-      effect: flag.action === "flag" ? "dim" : "avoid",
-      title:
-        flag.action === "reclass" && flag.class
+      effect: ripple ? "queue" : flag.action === "flag" ? "dim" : "avoid",
+      title: ripple
+        ? `Queued ${flag.class ? zoneLabel(flag.class).toLowerCase() : "change"} from next door`
+        : flag.action === "reclass" && flag.class
           ? `Live feed proposes ${zoneLabel(flag.class)}`
           : flag.note || "Live feed flagged this district",
-      detail: flag.note || "Confirm to teach the map, or dismiss the proposal.",
+      detail: ripple
+        ? "Connected, not copied. Confirm to apply here, or dismiss to keep this block independent."
+        : flag.note || "Confirm to teach the map, or dismiss the proposal.",
       local: true,
       patchId: flag.id,
+    });
+  }
+
+  if ((learned?.queued ?? 0) > 0 && zoned && !tooHigh) {
+    hits.push({
+      id: "ripple-queue",
+      effect: "queue",
+      title: `${learned?.queued} adjacent block${learned && learned.queued === 1 ? "" : "s"} queued`,
+      detail: "The rule engine already sees the local commit. Neighbors wait in the queue.",
+      local: false,
     });
   }
 

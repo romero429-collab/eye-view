@@ -2,6 +2,7 @@ import { altitudeFromZoom, type OverlayId, type OverlayState } from "./basemaps.
 import type { AttentionMap } from "./attention.ts";
 import type { MapObject } from "./map-types.ts";
 import type { RuleHit, SceneSample } from "./zoning-rules.ts";
+import { resolveZone, type ZonePatch } from "./zone-memory.ts";
 
 /** One tick of what the HUD actually sees. This is the contract Kiyoshi's
  *  Reality Integration Layer consumes: look-at, ground as context (never as
@@ -19,7 +20,7 @@ export type PerceptionFrame = {
   t: number;
   look: { lng: number; lat: number; zoom: number; altitudeKm: number };
   country: string | null;
-  zone: { class: string; label: string } | null;
+  zone: { class: string; label: string; learned: boolean; queued: number } | null;
   overlays: OverlayId[];
   focus: PerceptionFocus | null;
   rules: Array<{ id: string; effect: string; title: string }>;
@@ -51,15 +52,24 @@ export function buildPerception(args: {
   object: MapObject | null;
   rules: RuleHit[];
   attention: AttentionMap;
+  patches?: ZonePatch[];
   now?: number;
 }): PerceptionFrame {
-  const { scene, overlays, object, rules, attention, now = Date.now() } = args;
+  const { scene, overlays, object, rules, attention, patches = [], now = Date.now() } = args;
   const lng = object?.lng ?? scene?.lng ?? 0;
   const lat = object?.lat ?? scene?.lat ?? 0;
   const zoom = scene?.zoom ?? 0;
+  const learned = scene
+    ? resolveZone(patches, scene.lng, scene.lat, scene.zoneClass, scene.zoneLabel)
+    : null;
   const zone =
-    scene?.zoneClass && scene.zoneLabel && !/^no (zone|district)/i.test(scene.zoneLabel)
-      ? { class: scene.zoneClass, label: scene.zoneLabel }
+    learned?.class && learned.label && !/^no (zone|district)/i.test(learned.label)
+      ? {
+          class: learned.class,
+          label: learned.label,
+          learned: learned.immediate,
+          queued: learned.queued,
+        }
       : null;
   const countryFact = object?.facts?.find((f) => f.label === "Ground")?.value ?? null;
   return {

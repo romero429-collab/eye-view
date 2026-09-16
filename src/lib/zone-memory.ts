@@ -3,7 +3,7 @@ import { ZONE_SWATCHES, zoneLabel } from "./basemaps.ts";
 import { destination, haversineMeters } from "./spatial.ts";
 
 export type ZoneEdit = "reclass" | "tag" | "split" | "merge" | "flag";
-export type ZonePatchSource = "walk" | "query" | "live";
+export type ZonePatchSource = "walk" | "query" | "live" | "ripple";
 export type ZonePatchStatus = "proposed" | "accepted";
 
 export type ZonePatch = {
@@ -18,6 +18,8 @@ export type ZonePatch = {
   status: ZonePatchStatus;
   weight: number;
   t: number;
+  parentId: string | null;
+  generation: number;
 };
 
 export type ResolvedZone = {
@@ -26,17 +28,31 @@ export type ResolvedZone = {
   note: string | null;
   patch: ZonePatch | null;
   flags: ZonePatch[];
+  queued: number;
+  immediate: boolean;
 };
 
 export const MEMORY_KEY = "kiyoshi.eye.zones.v1";
 export const BLOCK_M = 90;
 export const SPLIT_M = 42;
 export const PROMOTE_WEIGHT = 2.4;
+/** One hop. Local commit is immediate; neighbors are queued, never overwritten. */
+export const MAX_HOP = 1;
+export const RIPPLE_GAP_M = BLOCK_M * 2;
+const CARDINALS = [0, 90, 180, 270];
 
 const AVOID_WILDLIFE = new Set(["industrial", "military", "garages", "extractive", "construction"]);
 
 function newId(): string {
   return `z-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function withMeta(row: ZonePatch): ZonePatch {
+  return {
+    ...row,
+    parentId: row.parentId ?? null,
+    generation: row.generation ?? 0,
+  };
 }
 
 export function loadPatches(): ZonePatch[] {
@@ -46,7 +62,9 @@ export function loadPatches(): ZonePatch[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row) => row && typeof row === "object" && typeof (row as ZonePatch).id === "string") as ZonePatch[];
+    return parsed
+      .filter((row) => row && typeof row === "object" && typeof (row as ZonePatch).id === "string")
+      .map((row) => withMeta(row as ZonePatch));
   } catch {
     return [];
   }
@@ -69,6 +87,14 @@ export function patchesAt(patches: ZonePatch[], lng: number, lat: number): ZoneP
   return patches.filter((p) => containsPatch(p, lng, lat));
 }
 
+export function connectedTo(patches: ZonePatch[], origin: ZonePatch): ZonePatch[] {
+  return patches.filter((p) => {
+    if (p.id === origin.id) return false;
+    const reach = origin.radiusM + p.radiusM + 24;
+    return haversineMeters(origin.lng, origin.lat, p.lng, p.lat) <= reach;
+  });
+}
+
 export function resolveZone(
   patches: ZonePatch[],
   lng: number,
@@ -86,13 +112,22 @@ export function resolveZone(
   const notes = here
     .filter((p) => p.action === "tag" && p.note)
     .map((p) => p.note);
+  const children = winner
+    ? patches.filter((p) => p.status === "proposed" && p.parentId === winner.id).length
+    : 0;
   return {
     class: klass,
     label: klass ? zoneLabel(klass, osmLabel) : osmLabel,
     note: notes[0] ?? winner?.note ?? null,
     patch: winner,
     flags,
+    queued: children,
+    immediate: Boolean(winner),
   };
+}
+
+function classChanging(action: ZoneEdit): boolean {
+  return action === "reclass" || action === "split" || action === "merge";
 }
 
 export function writePatch(
@@ -106,9 +141,13 @@ export function writePatch(
     source: ZonePatchSource;
     radiusM?: number;
     status?: ZonePatchStatus;
+    parentId?: string | null;
+    generation?: number;
   },
 ): ZonePatch[] {
   const radiusM = input.radiusM ?? (input.action === "split" ? SPLIT_M : BLOCK_M);
+  const status = input.status ?? (input.source === "live" || input.source === "ripple" ? "proposed" : "accepted");
+  const generation = input.generation ?? (input.source === "ripple" ? 1 : 0);
   const nearby = patches.find(
     (p) =>
       p.action === input.action &&
@@ -116,7 +155,8 @@ export function writePatch(
       haversineMeters(p.lng, p.lat, input.lng, input.lat) < radiusM * 0.6,
   );
   if (nearby) {
-    return patches.map((p) =>
+    const becameAccepted = nearby.status !== "accepted" && status === "accepted";
+    const next = patches.map((p) =>
       p.id === nearby.id
         ? {
             ...p,
@@ -125,12 +165,15 @@ export function writePatch(
             weight: p.weight + 1,
             t: Date.now(),
             note: input.note ?? p.note,
-            status: input.status ?? p.status,
+            status,
+            parentId: input.parentId ?? p.parentId,
+            generation: p.generation,
           }
         : p,
     );
+    return becameAccepted ? propagateFrom(next, nearby.id) : next;
   }
-  const next: ZonePatch = {
+  const created: ZonePatch = {
     id: newId(),
     lng: input.lng,
     lat: input.lat,
@@ -139,11 +182,74 @@ export function writePatch(
     class: input.class ?? null,
     note: input.note ?? "",
     source: input.source,
-    status: input.status ?? (input.source === "live" ? "proposed" : "accepted"),
-    weight: input.source === "live" ? 1 : 2,
+    status,
+    weight: input.source === "live" || input.source === "ripple" ? 1 : 2,
     t: Date.now(),
+    parentId: input.parentId ?? null,
+    generation,
   };
-  return [...patches, next];
+  const next = [...patches, created];
+  if (status === "accepted" && classChanging(created.action) && created.source !== "ripple") {
+    return propagateFrom(next, created.id);
+  }
+  return next;
+}
+
+function queueNeighbors(patches: ZonePatch[], origin: ZonePatch): ZonePatch[] {
+  if (!origin.class) return patches;
+  let next = patches;
+  for (const neighbor of connectedTo(patches, origin)) {
+    if (neighbor.status === "accepted" && neighbor.class === origin.class) continue;
+    if (neighbor.id === origin.id) continue;
+    next = writePatch(next, {
+      lng: neighbor.lng,
+      lat: neighbor.lat,
+      action: "reclass",
+      class: origin.class,
+      note: `Queued from adjacent ${zoneLabel(origin.class).toLowerCase()} — confirm to apply.`,
+      source: "ripple",
+      status: "proposed",
+      parentId: origin.id,
+      generation: Math.min((origin.generation ?? 0) + 1, MAX_HOP),
+      radiusM: neighbor.radiusM,
+    });
+  }
+  return next;
+}
+
+function seedAdjacency(patches: ZonePatch[], origin: ZonePatch): ZonePatch[] {
+  if (!origin.class || (origin.generation ?? 0) >= MAX_HOP) return patches;
+  let next = patches;
+  for (const bearing of CARDINALS) {
+    const spot = destination(origin.lng, origin.lat, bearing, RIPPLE_GAP_M);
+    const already = patchesAt(next, spot.lng, spot.lat).some(
+      (p) => p.status === "accepted" && p.class === origin.class,
+    );
+    if (already) continue;
+    next = writePatch(next, {
+      lng: spot.lng,
+      lat: spot.lat,
+      action: "reclass",
+      class: origin.class,
+      note: `Queued from ${zoneLabel(origin.class).toLowerCase()} next door. Independent until you confirm.`,
+      source: "ripple",
+      status: "proposed",
+      parentId: origin.id,
+      generation: 1,
+      radiusM: origin.radiusM,
+    });
+  }
+  return next;
+}
+
+export function propagateFrom(patches: ZonePatch[], originId: string): ZonePatch[] {
+  const origin = patches.find((p) => p.id === originId);
+  if (!origin || origin.status !== "accepted" || !classChanging(origin.action) || !origin.class) {
+    return patches;
+  }
+  let next = queueNeighbors(patches, origin);
+  if ((origin.generation ?? 0) < MAX_HOP) next = seedAdjacency(next, origin);
+  return next;
 }
 
 export function mergeAt(patches: ZonePatch[], lng: number, lat: number, klass: string | null): ZonePatch[] {
@@ -163,32 +269,33 @@ export function mergeAt(patches: ZonePatch[], lng: number, lat: number, klass: s
   const absorbed = new Set(here.map((p) => p.id));
   const rest = patches.filter((p) => !absorbed.has(p.id));
   const radius = Math.max(BLOCK_M, ...here.map((p) => p.radiusM + 24));
-  return [
-    ...rest,
-    {
-      id: keep?.id ?? newId(),
-      lng,
-      lat,
-      radiusM: radius,
-      action: "merge",
-      class: targetClass,
-      note: keep?.note || "Merged districts",
-      source: "walk",
-      status: "accepted",
-      weight: (keep?.weight ?? 1) + here.length,
-      t: Date.now(),
-    },
-  ];
+  const merged: ZonePatch = {
+    id: keep?.id ?? newId(),
+    lng,
+    lat,
+    radiusM: radius,
+    action: "merge",
+    class: targetClass,
+    note: keep?.note || "Merged districts",
+    source: "walk",
+    status: "accepted",
+    weight: (keep?.weight ?? 1) + here.length,
+    t: Date.now(),
+    parentId: null,
+    generation: 0,
+  };
+  return propagateFrom([...rest, merged], merged.id);
 }
 
 export function confirmPatch(patches: ZonePatch[], id: string): ZonePatch[] {
-  return patches.map((p) =>
+  const next = patches.map((p) =>
     p.id === id ? { ...p, status: "accepted" as const, weight: p.weight + 1, t: Date.now() } : p,
   );
+  return propagateFrom(next, id);
 }
 
 export function dismissPatch(patches: ZonePatch[], id: string): ZonePatch[] {
-  return patches.filter((p) => p.id !== id);
+  return patches.filter((p) => p.id !== id && p.parentId !== id);
 }
 
 export function absorbLive(
@@ -228,12 +335,16 @@ export function absorbLive(
     flag("flag", klass, "Seismic activity — treat this district as unstable.");
   }
 
-  return next.map((p) => {
+  const promoted: string[] = [];
+  next = next.map((p) => {
     if (p.status === "proposed" && p.action === "reclass" && p.weight >= PROMOTE_WEIGHT) {
+      promoted.push(p.id);
       return { ...p, status: "accepted" as const, note: p.note || "Promoted from live evidence" };
     }
     return p;
   });
+  for (const id of promoted) next = propagateFrom(next, id);
+  return next;
 }
 
 export function patchPolygon(patch: ZonePatch): Polygon {
@@ -261,16 +372,27 @@ export function patchesToGeoJSON(patches: ZonePatch[]): FeatureCollection {
       source: patch.source,
       kind: "zone",
       title:
-        patch.action === "tag"
-          ? patch.note || "Tagged district"
-          : patch.class
-            ? `${zoneLabel(patch.class)} · ${patch.action}`
-            : patch.action,
+        patch.source === "ripple"
+          ? `Queued ${patch.class ? zoneLabel(patch.class).toLowerCase() : "district"}`
+          : patch.action === "tag"
+            ? patch.note || "Tagged district"
+            : patch.class
+              ? `${zoneLabel(patch.class)} · ${patch.action}`
+              : patch.action,
       detail:
-        patch.status === "proposed"
-          ? patch.note || "Live feed proposed this change. Confirm or dismiss."
-          : patch.note || "Learned district. Overrides OSM at this look-at.",
-      sourceLabel: patch.source === "live" ? "Live evidence" : patch.source === "walk" ? "Ground walk" : "Query",
+        patch.source === "ripple"
+          ? patch.note || "Queued from a connected district. Independent until you confirm."
+          : patch.status === "proposed"
+            ? patch.note || "Live feed proposed this change. Confirm or dismiss."
+            : patch.note || "Applied immediately. Adjacent blocks are queued, not overwritten.",
+      sourceLabel:
+        patch.source === "ripple"
+          ? "Queued neighbor"
+          : patch.source === "live"
+            ? "Live evidence"
+            : patch.source === "walk"
+              ? "Ground walk"
+              : "Query",
     },
   }));
   return { type: "FeatureCollection", features };

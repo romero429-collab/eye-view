@@ -90,8 +90,8 @@ export function AtlasApp() {
     [overlays, scene, intent, patches],
   );
   const perception = useMemo(
-    () => buildPerception({ scene, overlays, object: picked, rules: hits, attention }),
-    [scene, overlays, picked, hits, attention],
+    () => buildPerception({ scene, overlays, object: picked, rules: hits, attention, patches }),
+    [scene, overlays, picked, hits, attention, patches],
   );
   const queryExamples = useMemo(
     () => rankQueries(QUERY_EXAMPLES, attention),

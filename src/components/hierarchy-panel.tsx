@@ -9,6 +9,7 @@ const EFFECT_LABEL: Record<RuleHit["effect"], string> = {
   snap: "Snap",
   dim: "Dim",
   prefer: "Prefer",
+  queue: "Queued",
 };
 
 type HierarchyPanelProps = {
@@ -46,7 +47,7 @@ export function HierarchyPanel({
             key={hit.id}
             className={cn(
               "rounded-[var(--radius-xs)] px-2 py-1.5",
-              hit.effect === "avoid" ? "bg-bg-warm" : "",
+              hit.effect === "avoid" ? "bg-bg-warm" : hit.effect === "queue" ? "bg-bg" : "",
             )}
           >
             <p className="flex items-baseline justify-between gap-2">
