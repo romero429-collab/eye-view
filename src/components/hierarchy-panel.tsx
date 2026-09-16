@@ -1,5 +1,6 @@
 import { GitBranch } from "lucide-react";
 import type { RuleHit } from "@/lib/zoning-rules";
+import { formatScore, type Calibration } from "@/lib/minds";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -10,7 +11,7 @@ const EFFECT_LABEL: Record<RuleHit["effect"], string> = {
   dim: "Dim",
   prefer: "Prefer",
   queue: "Queued",
-  adapt: "IOM",
+  adapt: "Mind",
 };
 
 type HierarchyPanelProps = {
@@ -20,6 +21,8 @@ type HierarchyPanelProps = {
   onWalk?: () => void;
   onConfirm?: (patchId: string) => void;
   onDismiss?: (patchId: string) => void;
+  calibration?: Calibration | null;
+  skillCount?: number;
 };
 
 export function HierarchyPanel({
@@ -29,6 +32,8 @@ export function HierarchyPanel({
   onWalk,
   onConfirm,
   onDismiss,
+  calibration,
+  skillCount,
 }: HierarchyPanelProps) {
   if (hits.length === 0) return null;
   const needScale = hits.some((hit) => hit.id === "need-scale");
@@ -38,10 +43,25 @@ export function HierarchyPanel({
     <div className="max-w-[min(100%,18rem)] rounded-[var(--radius-md)] border border-border bg-surface p-2 shadow-[var(--shadow-panel)] md:max-w-56">
       <p className="flex items-center gap-1.5 px-1.5 pt-0.5 pb-1 text-xs font-medium uppercase tracking-label text-subtle">
         <GitBranch className="size-3" strokeWidth={1.75} />
-        {iom ? "IOM coordinates" : "Zoning coordinates"}
+        {iom ? "Internet of Minds" : "Zoning coordinates"}
+        {calibration ? (
+          <span className="ml-auto font-mono normal-case tracking-normal text-muted">
+            {formatScore(calibration.score)}
+          </span>
+        ) : null}
       </p>
       {shownLabel ? (
         <p className="px-1.5 pb-1.5 font-mono text-xs text-muted">{shownLabel}</p>
+      ) : null}
+      {calibration && (calibration.drew.length > 0 || (skillCount ?? 0) > 0) ? (
+        <p className="px-1.5 pb-1.5 text-xs leading-snug text-muted">
+          {skillCount ? `${skillCount} skills on the network. ` : ""}
+          {calibration.drew.length
+            ? `Drew ${calibration.drew.map((d) => d.mind).join(", ")}.`
+            : "Live calibration — not a snapshot."}
+        </p>
+      ) : calibration?.matter[0] ? (
+        <p className="px-1.5 pb-1.5 text-xs leading-snug text-muted">{calibration.matter[0]}</p>
       ) : null}
       <ul className="flex flex-col gap-1">
         {hits.map((hit) => (

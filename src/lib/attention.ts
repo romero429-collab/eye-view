@@ -23,7 +23,7 @@ const HINTS: Record<string, string[]> = {
   plots: ["plot", "lot", "address", "parcel"],
   walk: ["walk", "street"],
   iot: ["iot", "sensor", "changing", "weather"],
-  iom: ["iom", "changing", "adapt"],
+  iom: ["iom", "changing", "adapt", "mind", "skill", "learn", "calibrat"],
   recreation: ["recreation", "park", "pitch"],
   extractive: ["quarry", "landfill", "mine"],
   construction: ["construction"],

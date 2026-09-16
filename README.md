@@ -23,7 +23,8 @@ Type what you want instead of hunting toggles. Chips under the bar run the same 
 - `terrain for animals here` — wildlife + trails + zoning at the look-at
 - `walk this street` — drops to ground level with 3D buildings
 - `this is residential` — teaches the look-at; a local patch overrides OSM
-- `what's changing here` — IoT sensors + IOM. Weather, seismic, and ground tags reroute transit and update the frame.
+- `what's changing here` — IoT sensors + Internet of Minds. Weather, seismic, and ground tags reroute transit and update the frame.
+- `what did we learn here` — the skill pool. When one mind learns a district, the others draw it. Live calibration, not a snapshot.
 - `split this zone` — subdivides the district under the crosshair
 
 Walk the street to **Tag / Reclass / Split / Merge**. The block underfoot commits immediately; four adjacent blocks queue as proposals — they stay independent until you confirm. Live wildlife, plants, transit, and events propose reclassifications the same way.

@@ -20,6 +20,13 @@ describe("parseMapQuery", () => {
     assert.ok(intent.overlays.includes("transit"));
   });
 
+  it("asks the network what it learned, not for a dump of layers", () => {
+    const intent = parseMapQuery("what did we learn here");
+    assert.equal(intent.here, true);
+    assert.ok(intent.overlays.includes("iot"));
+    assert.ok(intent.overlays.includes("zoning"));
+  });
+
   it("reads animal terrain at the look-at", () => {
     const intent = parseMapQuery("what's the terrain like here for animals");
     assert.equal(intent.kind, "ask");

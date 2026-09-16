@@ -4,7 +4,8 @@ import type { MapObject } from "./map-types.ts";
 import type { RuleHit, SceneSample } from "./zoning-rules.ts";
 import { resolveZone, type ZonePatch } from "./zone-memory.ts";
 import { perceiveMovement, type TransitMood } from "./transit-sense.ts";
-import { orchestrate, type Consequence } from "./iom.ts";
+import { type Consequence } from "./iom.ts";
+import { syncMinds, type Calibration } from "./minds.ts";
 
 /** One tick of what the HUD actually sees. This is the contract Kiyoshi's
  *  Reality Integration Layer consumes: look-at, ground as context (never as
@@ -29,6 +30,14 @@ export type PerceptionFrame = {
   attention: AttentionMap;
   movement: { mood: TransitMood; title: string } | null;
   consequences: Array<Pick<Consequence, "id" | "cause" | "target" | "action" | "title">>;
+  minds: {
+    score: number;
+    skills: number;
+    changed: string[];
+    drew: Calibration["drew"];
+    matter: string[];
+  };
+  calibration: Calibration;
 };
 
 export function formatDecimal(lng: number, lat: number): string {
@@ -82,6 +91,7 @@ export function buildPerception(args: {
         return { mood: sense.mood, title: sense.title };
       })()
     : null;
+  const minds = syncMinds({ scene, overlays, patches, now });
   return {
     t: now,
     look: {
@@ -97,13 +107,21 @@ export function buildPerception(args: {
     rules: rules.map((hit) => ({ id: hit.id, effect: hit.effect, title: hit.title })),
     attention,
     movement,
-    consequences: orchestrate({ scene, overlays, patches }).map((c) => ({
+    consequences: minds.consequences.map((c) => ({
       id: c.id,
       cause: c.cause,
       target: c.target,
       action: c.action,
       title: c.title,
     })),
+    minds: {
+      score: minds.calibration.score,
+      skills: minds.pool.length,
+      changed: minds.calibration.changed,
+      drew: minds.calibration.drew,
+      matter: minds.calibration.matter,
+    },
+    calibration: minds.calibration,
   };
 }
 

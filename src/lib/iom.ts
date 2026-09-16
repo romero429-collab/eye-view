@@ -1,8 +1,9 @@
 import type { OverlayState } from "./basemaps.ts";
 import { resolveZone, type ZonePatch } from "./zone-memory.ts";
 
-/** Interaction Orchestration Model — how a change in one layer
- *  becomes action in the others. Sensors → perception → adaptation → action. */
+/** Internet of Minds — the consequence bus minds share.
+ *  Sensors → perception → adaptation → action. When a zone, sensor,
+ *  or walker changes, every other mind feels it. */
 
 export type IomAction = "reroute" | "anticipate" | "adapt" | "update" | "flag";
 
@@ -145,7 +146,7 @@ export function orchestrate(args: {
       target: "perception",
       action: "update",
       title: "Wired into this district's sensors",
-      detail: `${n} station${n === 1 ? "" : "s"} live${temp ? ` · ${temp.toFixed(0)}°C` : ""}. IOM reads the nerve — weather, seismic, tags — not a static map.`,
+      detail: `${n} station${n === 1 ? "" : "s"} live${temp ? ` · ${temp.toFixed(0)}°C` : ""}. The Internet of Minds reads the nerve — weather, seismic, tags — not a static map.`,
     });
   }
 

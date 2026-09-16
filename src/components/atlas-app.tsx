@@ -470,6 +470,8 @@ export function AtlasApp() {
                     }}
                     onConfirm={(id) => commitPatches(confirmPatch(patches, id))}
                     onDismiss={(id) => commitPatches(dismissPatch(patches, id))}
+                    calibration={perception.calibration}
+                    skillCount={perception.minds.skills}
                   />
                   {overlays.metric && !overlays.zoning && !overlays.wildlife && !overlays.plants && !overlays.quakes ? (
                     <MapLegend metric={metric} stops={scale.stops} />

@@ -84,6 +84,14 @@ function RealityFrame({ frame }: { frame: PerceptionFrame }) {
             <dd className="text-right text-sm font-medium text-fg">{frame.consequences[0].title}</dd>
           </div>
         ) : null}
+        {frame.minds ? (
+          <div className="flex items-baseline justify-between gap-3 py-2">
+            <dt className="text-xs uppercase tracking-label text-subtle">Minds</dt>
+            <dd className="text-right text-sm font-medium text-fg">
+              {Math.round(frame.minds.score * 100)}% · {frame.minds.skills} skills
+            </dd>
+          </div>
+        ) : null}
         {frame.country ? (
           <div className="flex items-baseline justify-between gap-3 py-2">
             <dt className="text-xs uppercase tracking-label text-subtle">Ground</dt>

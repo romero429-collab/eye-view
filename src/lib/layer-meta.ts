@@ -112,7 +112,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   iot: {
     icon: Radio,
     usage:
-      "IoT into the perception layer: METAR weather stations plus an Open-Meteo node at the look-at. IOM uses precip, wind, and seismic to reroute transit and anticipate wildlife.",
+      "IoT into the perception layer: METAR weather stations plus an Open-Meteo node at the look-at. The Internet of Minds uses precip, wind, and seismic to reroute transit and share skills across zone, wildlife, and walk.",
   },
 };
 

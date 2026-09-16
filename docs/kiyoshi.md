@@ -14,7 +14,7 @@ has a spatial backend, the globe *is* the layer:
 | Feedback | Local attention. What you inspect rises; chips reorder. |
 | Protective membrane | Country GDP cannot hijack a heat cell. Coordinates are always the look-at. |
 | Digital twin | OSM land-use / landcover + live feeds over satellite. Not legal zoning of record. |
-| Nervous system | IoT overlay + `src/lib/iom.ts`. Weather stations and the look-at climate node fire consequences. |
+| Nervous system | IoT overlay + `src/lib/iom.ts` + `src/lib/minds.ts`. Weather stations fire consequences. Skills persist across look-ats. Live calibration is the continuity engine in this HUD. |
 
 ## Short term (this build)
 
@@ -27,7 +27,7 @@ Rock-solid foundation, then the recursive loop Claude named:
 5. **Events in districts** — hazards dim and coordinate with the zone, they do not replace it.
 6. **Plants as structure** — vegetation is a queryable overlay (GBIF + OSM cover), not scenery. Wildlife clusters on it; paved commercial with native cover proposes a reclass.
 7. **Transit as movement** — buses are not a timetable layer. They perceive the district: flow, constrain, reroute around hazard, or orphan after a learned reclass.
-8. **IoT + IOM** — sensors (METAR, Open-Meteo, seismic) feed the perception layer. IOM is the consequence bus: a walk tag, a storm, or a reclass adapts transit, wildlife, and plants together. Sensors → perception → adaptation → action.
+8. **IoT + Internet of Minds** — sensors (METAR, Open-Meteo, seismic) feed the perception layer. IOM is a skill-sharing network: zone, transit, wildlife, plants, IoT, and the walker. When one learns, all benefit. Live calibration quantifies the next version of the model every tick — not periodic snapshots.
 
 
 ## Long term
