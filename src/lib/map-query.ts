@@ -1,5 +1,6 @@
 import { DEFAULT_OVERLAYS, ZONE_SWATCHES, type OverlayId, type OverlayState } from "./basemaps.ts";
 import { COUNTRIES } from "./countries.ts";
+import type { ZoneEdit } from "./zone-memory.ts";
 
 export type QueryKind = "empty" | "place" | "ask" | "walk";
 
@@ -15,6 +16,7 @@ export type MapIntent = {
   countryId: string | null;
   countryName: string | null;
   summary: string;
+  edit: ZoneEdit | null;
 };
 
 const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
@@ -72,9 +74,14 @@ export const QUERY_EXAMPLES = [
   "transit in industrial",
   "terrain for animals here",
   "walk this street",
-  "wildlife vs seismic",
-  "recreation here",
+  "this is residential",
+  "split this zone",
 ] as const;
+
+const THIS_IS_RE = /\b(?:this is|make this|reclassify(?: this)?(?: as)?|mark this(?: as)?)\b/;
+const SPLIT_RE = /\bsplit\b/;
+const MERGE_RE = /\bmerge\b/;
+const TAG_RE = /\b(tag|note that|missed)\b/;
 
 function matchZone(text: string): { id: string; label: string } | null {
   const lower = text.toLowerCase();
@@ -119,6 +126,10 @@ function leftoverLocation(text: string, zoneId: string | null): string | null {
   let leftover = text.toLowerCase();
   leftover = leftover.replace(WALK_RE, " ");
   leftover = leftover.replace(HERE_RE, " ");
+  leftover = leftover.replace(THIS_IS_RE, " ");
+  leftover = leftover.replace(SPLIT_RE, " ");
+  leftover = leftover.replace(MERGE_RE, " ");
+  leftover = leftover.replace(TAG_RE, " ");
   leftover = leftover.replace(/\bzone\b/g, " ");
   for (const { re } of OVERLAY_WORDS) leftover = leftover.replace(re, " ");
   if (zoneId) leftover = leftover.replace(new RegExp(`\\b${zoneId}\\b`, "g"), " ");
@@ -145,12 +156,22 @@ export function parseMapQuery(raw: string): MapIntent {
       countryId: null,
       countryName: null,
       summary: "",
+      edit: null,
     };
   }
   const lower = text.toLowerCase();
   const walk = WALK_RE.test(lower);
   const here = HERE_RE.test(lower);
   const zone = matchZone(lower);
+  const edit: ZoneEdit | null = SPLIT_RE.test(lower)
+    ? "split"
+    : MERGE_RE.test(lower)
+      ? "merge"
+      : THIS_IS_RE.test(lower)
+        ? "reclass"
+        : TAG_RE.test(lower)
+          ? "tag"
+          : null;
   const overlays: OverlayId[] = [];
   for (const { id, re } of OVERLAY_WORDS) {
     if (re.test(lower) && !overlays.includes(id)) overlays.push(id);
@@ -162,12 +183,13 @@ export function parseMapQuery(raw: string): MapIntent {
     overlays.push("zoning");
   }
   if (zone && !overlays.includes("zoning")) overlays.push("zoning");
+  if (edit && !overlays.includes("zoning")) overlays.push("zoning");
   if (overlays.includes("transit") && !overlays.includes("streets")) overlays.push("streets");
   if (overlays.includes("rail") && !overlays.includes("streets")) overlays.push("streets");
 
   const country = matchCountry(text);
   const locationText = leftoverLocation(text, zone?.id ?? null);
-  const asked = overlays.length > 0 || walk || Boolean(zone);
+  const asked = overlays.length > 0 || walk || Boolean(zone) || Boolean(edit);
 
   let kind: QueryKind = "place";
   if (walk) kind = "walk";
@@ -175,14 +197,18 @@ export function parseMapQuery(raw: string): MapIntent {
   else if (!country && !locationText) kind = "ask";
 
   const parts: string[] = [];
+  if (edit === "reclass" && zone) parts.push(`Reclass as ${zone.label.toLowerCase()}`);
+  else if (edit === "split") parts.push("Split district");
+  else if (edit === "merge") parts.push(zone ? `Merge into ${zone.label.toLowerCase()}` : "Merge district");
+  else if (edit === "tag") parts.push("Tag this look-at");
   if (walk) parts.push("Ground walk");
-  if (overlays.length) {
+  if (overlays.length && !edit) {
     parts.push(overlays.map((id) => id).join(" + "));
   }
-  if (zone) parts.push(`in ${zone.label.toLowerCase()}`);
+  if (zone && !edit) parts.push(`in ${zone.label.toLowerCase()}`);
   if (here) parts.push("at look-at");
   else if (country) parts.push(country.name);
-  else if (locationText) parts.push(locationText);
+  else if (locationText && !edit) parts.push(locationText);
 
   return {
     raw: text,
@@ -191,11 +217,12 @@ export function parseMapQuery(raw: string): MapIntent {
     zoneClass: zone?.id ?? null,
     zoneLabel: zone?.label ?? null,
     locationText: country ? country.name : locationText,
-    here,
+    here: here || Boolean(edit),
     walk,
     countryId: country?.id ?? null,
     countryName: country?.name ?? null,
     summary: parts.join(" · ") || text,
+    edit,
   };
 }
 
@@ -208,6 +235,7 @@ export function assembleOverlays(intent: MapIntent): OverlayState {
     next.labels = true;
   }
   if (intent.zoneClass) next.zoning = true;
+  if (intent.edit) next.zoning = true;
   if (next.wildlife || next.livestock || next.trails) next.zoning = true;
   if (next.transit || next.rail) next.streets = true;
   return next;

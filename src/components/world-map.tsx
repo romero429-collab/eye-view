@@ -58,6 +58,7 @@ import {
   quakeCircleColor,
 } from "@/lib/heat";
 import { DISTRICT_ZOOM, radarDimFactor, type SceneSample } from "@/lib/zoning-rules";
+import { patchesToGeoJSON, type ZonePatch } from "@/lib/zone-memory";
 
 declare global {
   interface Window {
@@ -103,6 +104,7 @@ type WorldMapProps = {
   onPickObject?: (object: MapObject | null) => void;
   zoneFilter?: string | null;
   onScene?: (scene: SceneSample | null) => void;
+  patches?: ZonePatch[];
 };
 
 function isCoarsePointer(): boolean {
@@ -245,6 +247,10 @@ function buildStyle(): StyleSpecification {
         data: { type: "FeatureCollection", features: [] },
       },
       zoning: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      memory: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
@@ -451,6 +457,36 @@ function buildStyle(): StyleSpecification {
           "circle-opacity": 0.9,
           "circle-stroke-color": "#e7eaed",
           "circle-stroke-width": 0.6,
+        },
+      },
+      {
+        id: "memory-fill",
+        type: "fill",
+        source: "memory",
+        layout: { visibility: "none" },
+        paint: {
+          "fill-color": ZONE_FILL_COLOR,
+          "fill-opacity": [
+            "case",
+            ["==", ["get", "status"], "proposed"],
+            0.22,
+            0.48,
+          ],
+        },
+      },
+      {
+        id: "memory-line",
+        type: "line",
+        source: "memory",
+        layout: { visibility: "none" },
+        paint: {
+          "line-color": [
+            "case",
+            ["==", ["get", "status"], "proposed"],
+            "#d4a054",
+            "#e7eaed",
+          ],
+          "line-width": 1.4,
         },
       },
       {
@@ -943,6 +979,8 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "zoning-fill",
     "zoning-line",
     "zoning-point",
+    "memory-fill",
+    "memory-line",
   ],
   health: ["health"],
   radar: ["radar"],
@@ -979,6 +1017,7 @@ const AREA_HIT_LAYERS = [
   "otm-zone",
   "otm-park",
   "otm-cover",
+  "memory-fill",
   "osm-line",
   "osm-fill",
   "otm-rail",
@@ -1036,7 +1075,7 @@ function layerName(layerId: string, kind: MapObjectKind): string {
   if (layerId.includes("wildlife") || kind === "sighting") return "Wild";
   if (layerId.includes("livestock") || kind === "farm" || kind === "fence") return "Domestic";
   if (layerId === "quakes" || kind === "quake") return "Quakes";
-  if (layerId.startsWith("otm-zone") || layerId.startsWith("zoning") || layerId === "otm-cover" || layerId === "otm-park" || kind === "zone")
+  if (layerId.startsWith("otm-zone") || layerId.startsWith("zoning") || layerId === "otm-cover" || layerId === "otm-park" || layerId.startsWith("memory") || kind === "zone")
     return "Zoning";
   if (layerId.startsWith("plots") || kind === "plot" || kind === "building" || kind === "address")
     return "Plots";
@@ -1101,7 +1140,8 @@ function featureToObject(
                       layerId === "otm-zone-line" ||
                       layerId === "otm-cover" ||
                       layerId === "otm-park" ||
-                      layerId.startsWith("zoning")
+                      layerId.startsWith("zoning") ||
+                      layerId.startsWith("memory")
                     ? "zone"
             : layerId.startsWith("otm-")
               ? "rail"
@@ -1150,7 +1190,8 @@ function featureToObject(
       layerId === "otm-zone" ||
       layerId === "otm-zone-line" ||
       layerId === "otm-cover" ||
-      layerId === "otm-park";
+      layerId === "otm-park" ||
+      layerId.startsWith("memory");
     const title =
       name ||
       house ||
@@ -1232,6 +1273,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     onPickObject,
     zoneFilter = null,
     onScene,
+    patches = [],
   },
   ref,
 ) {
@@ -1301,6 +1343,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       quakes: countLayer("quakes"),
       transit: countLayer("transit"),
       wildlife: countLayer("wildlifeLive") + countLayer("wildlife"),
+      events: countLayer("events"),
+      alerts: countLayer("alerts"),
     };
   };
 
@@ -1936,6 +1980,13 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       window.clearInterval(id);
     };
   }, [ready, overlays, zoneFilter, walking]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const src = map.getSource("memory") as GeoJSONSource | undefined;
+    src?.setData(patchesToGeoJSON(patches));
+  }, [patches, ready]);
 
   useEffect(() => {
     const map = mapRef.current;

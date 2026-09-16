@@ -45,6 +45,20 @@ describe("parseMapQuery", () => {
     assert.equal(intent.zoneClass, "recreation");
     assert.ok(intent.overlays.includes("zoning"));
   });
+
+  it("reads a ground reclass as an edit, not a country hunt", () => {
+    const intent = parseMapQuery("this is residential");
+    assert.equal(intent.kind, "ask");
+    assert.equal(intent.edit, "reclass");
+    assert.equal(intent.zoneClass, "residential");
+    assert.equal(intent.here, true);
+  });
+
+  it("splits the district under the look-at", () => {
+    const intent = parseMapQuery("split this zone");
+    assert.equal(intent.edit, "split");
+    assert.equal(intent.here, true);
+  });
 });
 
 describe("assembleOverlays", () => {

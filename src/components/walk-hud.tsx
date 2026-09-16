@@ -1,9 +1,17 @@
 import { Footprints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { EDIT_CLASSES } from "@/lib/zone-memory";
 
 type WalkHudProps = {
   zoneLabel: string;
+  learned?: string | null;
+  reclass: string;
+  onReclassChange: (id: string) => void;
+  onTag: () => void;
+  onSplit: () => void;
+  onMerge: () => void;
+  onReclass: () => void;
   onExit: () => void;
   onHold: (code: string, down: boolean) => void;
 };
@@ -15,20 +23,59 @@ const PAD: Array<{ code: string; label: string; className: string }> = [
   { code: "KeyD", label: "D", className: "col-start-3 row-start-2" },
 ];
 
-export function WalkHud({ zoneLabel, onExit, onHold }: WalkHudProps) {
+export function WalkHud({
+  zoneLabel,
+  learned,
+  reclass,
+  onReclassChange,
+  onTag,
+  onSplit,
+  onMerge,
+  onReclass,
+  onExit,
+  onHold,
+}: WalkHudProps) {
   return (
     <>
       <div className="pointer-events-none absolute inset-x-3 top-12 flex justify-center md:top-14">
-        <div className="pointer-events-auto flex max-w-full items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-1.5 shadow-[var(--shadow-panel)]">
-          <Footprints className="size-3.5 shrink-0 text-primary" strokeWidth={1.75} />
-          <p className="min-w-0 truncate text-xs font-medium tracking-wide text-fg">
-            Ground walk
-            <span className="mx-2 text-border-strong">/</span>
-            <span className="text-muted">{zoneLabel || "Looking for zone…"}</span>
-          </p>
-          <Button type="button" size="sm" variant="outline" onClick={onExit}>
-            Stand
-          </Button>
+        <div className="pointer-events-auto flex max-w-full flex-col gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-1.5 shadow-[var(--shadow-panel)]">
+          <div className="flex items-center gap-2">
+            <Footprints className="size-3.5 shrink-0 text-primary" strokeWidth={1.75} />
+            <p className="min-w-0 truncate text-xs font-medium tracking-wide text-fg">
+              Ground walk
+              <span className="mx-2 text-border-strong">/</span>
+              <span className="text-muted">{learned || zoneLabel || "Looking for zone…"}</span>
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={onExit}>
+              Stand
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <select
+              aria-label="Reclass this district"
+              value={reclass}
+              onChange={(e) => onReclassChange(e.target.value)}
+              className="h-8 max-w-[9rem] rounded-[var(--radius-sm)] border border-border bg-bg px-2 text-xs text-fg"
+            >
+              {EDIT_CLASSES.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <Button type="button" size="sm" onClick={onReclass}>
+              Reclass
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={onTag}>
+              Tag
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={onSplit}>
+              Split
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={onMerge}>
+              Merge
+            </Button>
+          </div>
         </div>
       </div>
       <p className="pointer-events-none absolute bottom-28 left-1/2 hidden -translate-x-1/2 text-xs text-subtle md:block">

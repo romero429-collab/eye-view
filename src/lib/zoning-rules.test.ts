@@ -48,6 +48,8 @@ describe("evaluateRules", () => {
         quakes: 0,
         transit: 2,
         wildlife: 1,
+        events: 0,
+        alerts: 0,
       },
     });
     assert.ok(hits.some((h) => h.id === "container"));
@@ -69,6 +71,8 @@ describe("evaluateRules", () => {
         quakes: 0,
         transit: 0,
         wildlife: 1,
+        events: 0,
+        alerts: 0,
       },
     });
     assert.ok(hits.some((h) => h.id === "need-scale"));
@@ -90,6 +94,8 @@ describe("evaluateRules", () => {
         quakes: 0,
         transit: 0,
         wildlife: 0,
+        events: 0,
+        alerts: 0,
       },
     });
     assert.ok(hits.some((h) => h.id === "need-scale"));
@@ -110,6 +116,8 @@ describe("evaluateRules", () => {
         quakes: 0,
         transit: 0,
         wildlife: 0,
+        events: 0,
+        alerts: 0,
       },
     });
     assert.ok(hits.some((h) => h.id === "empty-zone"));
@@ -117,8 +125,40 @@ describe("evaluateRules", () => {
     assert.ok(!hits.some((h) => /contains the view/i.test(h.title)));
   });
 
-  it("dims live layers when radar is on", () => {
-    assert.equal(radarDimFactor({ ...DEFAULT_OVERLAYS, radar: true }), 0.42);
-    assert.equal(radarDimFactor(DEFAULT_OVERLAYS), 1);
+  it("dims live events inside the district and learns a wildlife mismatch", () => {
+    const hits = evaluateRules({
+      overlays: { ...DEFAULT_OVERLAYS, zoning: true, wildlife: true, events: true },
+      scene: {
+        lng: -106.65,
+        lat: 35.08,
+        zoom: 14,
+        bearing: 0,
+        pitch: 0,
+        zoneClass: "industrial",
+        zoneLabel: "Industrial",
+        quakes: 0,
+        transit: 0,
+        wildlife: 2,
+        events: 1,
+        alerts: 0,
+      },
+      patches: [
+        {
+          id: "z-test",
+          lng: -106.65,
+          lat: 35.08,
+          radiusM: 90,
+          action: "reclass",
+          class: "park",
+          note: "Wildlife using industrial ground",
+          source: "live",
+          status: "proposed",
+          weight: 1,
+          t: 1,
+        },
+      ],
+    });
+    assert.ok(hits.some((h) => h.id === "event-zone"));
+    assert.ok(hits.some((h) => h.patchId === "z-test"));
   });
 });

@@ -113,4 +113,5 @@ Client helpers: `src/lib/spatial.ts` (haversine, destination),
 swatches including recreation / construction / extractive / pasture),
 `src/lib/zoning-rules.ts` (coordinator), `src/lib/map-query.ts` (ask the map),
 `src/lib/perception.ts` (Kiyoshi reality frame), `src/lib/attention.ts`
-(inspect → salience). How this HUD sits in the OS: [kiyoshi.md](kiyoshi.md).
+(inspect → salience), `src/lib/zone-memory.ts` (tag / reclass / split / merge,
+live proposals). How this HUD sits in the OS: [kiyoshi.md](kiyoshi.md).

@@ -17,14 +17,14 @@ has a spatial backend, the globe *is* the layer:
 
 ## Short term (this build)
 
-Rock-solid foundation, the list Claude handed over:
+Rock-solid foundation, then the recursive loop Claude named:
 
 1. **Click handling** — heat / zone / plot win. Country pick is orbit-only.
-2. **Colors** — land-use, landcover, and heat ramps stay distinct. Metric fill fades at city scale.
-3. **Coordinates** — look-at is always on the chrome; every object carries decimal degrees.
-4. **More zone types** — recreation, construction, quarry/landfill, pasture, on top of residential / commercial / industrial / civic.
-5. **Live feeds** — GTFS, ADS-B, USGS, GBIF, NWS, EONET, RainViewer already stream; radar dims the other dots.
-6. **Feedback loop** — inspect a wildlife cell and “terrain for animals” climbs the query chips.
+2. **Colors** — land-use, landcover, and heat ramps stay distinct.
+3. **Coordinates** — look-at is always on the chrome.
+4. **Zone memory** — walk or query to tag / reclass / split / merge. Live wildlife, transit, events, and alerts *propose* reclassification; confirming evidence promotes the patch. OSM is the prior. Local patches are the posterior.
+5. **Events in districts** — hazards dim and coordinate with the zone, they do not replace it.
+
 
 ## Long term
 

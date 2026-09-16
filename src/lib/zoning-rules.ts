@@ -1,5 +1,6 @@
 import type { OverlayId, OverlayState } from "./basemaps.ts";
 import { ZONE_SWATCHES, zoneLabel } from "./basemaps.ts";
+import { resolveZone, type ZonePatch } from "./zone-memory.ts";
 
 export type ZoneClassId = (typeof ZONE_SWATCHES)[number]["id"] | "unknown";
 
@@ -11,6 +12,7 @@ export type RuleHit = {
   title: string;
   detail: string;
   local: boolean;
+  patchId?: string;
 };
 
 export type SceneSample = {
@@ -24,6 +26,8 @@ export type SceneSample = {
   quakes: number;
   transit: number;
   wildlife: number;
+  events: number;
+  alerts: number;
 };
 
 /** OpenMapTiles landuse/cover is not in the globe tiles until city/regional zoom. */
@@ -38,6 +42,7 @@ export type RuleContext = {
   overlays: OverlayState;
   scene: SceneSample | null;
   zoneFilter?: string | null;
+  patches?: ZonePatch[];
 };
 
 const AVOID_WILDLIFE = new Set(["industrial", "military", "garages", "extractive", "construction"]);
@@ -60,21 +65,27 @@ export function coordinateToggle(state: OverlayState, id: OverlayId): OverlaySta
   if (id === "transit" || id === "rail") next.streets = true;
   if (id === "wildlife" || id === "livestock" || id === "trails") next.zoning = true;
   if (id === "plots") next.zoning = true;
+  if (id === "events" || id === "alerts") next.zoning = true;
   if (id === "zoning" || id === "wildlife" || id === "quakes") next.metric = false;
   return next;
 }
 
 export function evaluateRules(ctx: RuleContext): RuleHit[] {
-  const { overlays, scene, zoneFilter } = ctx;
+  const { overlays, scene, zoneFilter, patches = [] } = ctx;
   const hits: RuleHit[] = [];
-  const klass = zoneClassOf(scene?.zoneClass);
-  const labeled = scene?.zoneLabel || zoneLabel(klass, "Unknown land use");
+  const learned =
+    scene
+      ? resolveZone(patches, scene.lng, scene.lat, scene.zoneClass, scene.zoneLabel)
+      : null;
+  const klass = zoneClassOf(learned?.class ?? scene?.zoneClass);
+  const labeled = learned?.label || scene?.zoneLabel || zoneLabel(klass, "Unknown land use");
   const tooHigh = needsDistrictScale(scene?.zoom);
   const unlabeled =
     klass === "unknown" ||
-    !scene?.zoneClass ||
+    !(learned?.class ?? scene?.zoneClass) ||
     /^no (zone|district)/i.test(labeled);
   const zoned = overlays.zoning || !unlabeled;
+  const learnedOverride = Boolean(learned?.patch);
 
   if (overlays.zoning && tooHigh) {
     hits.push({
@@ -89,10 +100,14 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
     hits.push({
       id: "container",
       effect: "container",
-      title: `${labeled} contains the view`,
-      detail:
-        "Zoning is the coordinating container. Other feeds snap, avoid, or dim inside this district.",
+      title: learnedOverride
+        ? `Learned ${labeled.toLowerCase()} contains the view`
+        : `${labeled} contains the view`,
+      detail: learnedOverride
+        ? "A local patch overrides OSM here. Tag, split, or merge on the street to refine it."
+        : "Zoning is the coordinating container. Other feeds snap, avoid, or dim inside this district.",
       local: true,
+      patchId: learned?.patch?.id,
     });
   } else if (overlays.zoning) {
     hits.push({
@@ -103,8 +118,22 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
         : "No district at this look-at",
       detail: zoneFilter
         ? `The view is filtered to ${zoneFilter}. Pan until that class fills the look-at, or drop into a known district.`
-        : "OpenStreetMap has no land-use polygon under the crosshair. Pan to a block or drop into a city.",
+        : "OpenStreetMap has no land-use polygon under the crosshair. Tag one on the ground to teach the HUD.",
       local: false,
+    });
+  }
+
+  for (const flag of learned?.flags ?? []) {
+    hits.push({
+      id: `learn-${flag.id}`,
+      effect: flag.action === "flag" ? "dim" : "avoid",
+      title:
+        flag.action === "reclass" && flag.class
+          ? `Live feed proposes ${zoneLabel(flag.class)}`
+          : flag.note || "Live feed flagged this district",
+      detail: flag.note || "Confirm to teach the map, or dismiss the proposal.",
+      local: true,
+      patchId: flag.id,
     });
   }
 
@@ -128,6 +157,16 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
         ? "Quakes in view — corridors treat this as unstable ground."
         : "Seismic feed is on. Animals avoid recent rupture when it appears.",
       local,
+    });
+  }
+
+  if ((overlays.events && (scene?.events ?? 0) > 0) || (overlays.alerts && (scene?.alerts ?? 0) > 0)) {
+    hits.push({
+      id: "event-zone",
+      effect: "dim",
+      title: "Live event in this district",
+      detail: "Hazards and alerts coordinate with the zone — they do not replace it.",
+      local: true,
     });
   }
 

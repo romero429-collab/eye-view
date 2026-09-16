@@ -22,7 +22,10 @@ Type what you want instead of hunting toggles. Chips under the bar run the same 
 - `transit in industrial` — assembles transit + streets + zoning, then drops to city scale
 - `terrain for animals here` — wildlife + trails + zoning at the look-at
 - `walk this street` — drops to ground level with 3D buildings
-- `recreation here` — recreation districts (stadiums, pitches, parks)
+- `this is residential` — teaches the look-at; a local patch overrides OSM
+- `split this zone` — subdivides the district under the crosshair
+
+Walk the street to **Tag / Reclass / Split / Merge**. Live wildlife, transit, and events propose reclassifications; Confirm teaches the map, Dismiss drops the proposal. Two agreeing live samples promote a patch on their own.
 
 From orbit, district queries fly into Albuquerque so land-use tiles actually load. Zoning is the coordinating container: wildlife avoids industrial, extractive, and seismic; transit snaps to streets; radar dims the other live dots.
 

@@ -26,6 +26,8 @@ describe("perception frame", () => {
         quakes: 0,
         transit: 0,
         wildlife: 1,
+        events: 0,
+        alerts: 0,
       },
       overlays: { ...DEFAULT_OVERLAYS, wildlife: true, zoning: true, metric: false },
       object,

@@ -21,7 +21,7 @@ import { COUNTRIES, lookupCountry } from "@/lib/countries";
 import { type MetricId } from "@/lib/metrics";
 import type { GlobeRotation, HoverInfo, MapObject, MapTransform, ViewMode } from "@/lib/map-types";
 import { HOME_ROTATION } from "@/lib/map-types";
-import { altitudeFromZoom, DEFAULT_OVERLAYS, HOME_VIEW, type OverlayId } from "@/lib/basemaps";
+import { altitudeFromZoom, DEFAULT_OVERLAYS, DISTRICT_SPOTS, DISTRICT_VIEW, HOME_VIEW, type OverlayId } from "@/lib/basemaps";
 import { assembleOverlays, type MapIntent, QUERY_EXAMPLES } from "@/lib/map-query";
 import { coordinateToggle, evaluateRules, needsDistrictScale, type SceneSample } from "@/lib/zoning-rules";
 import {
@@ -32,6 +32,18 @@ import {
   type AttentionMap,
 } from "@/lib/attention";
 import { buildPerception, formatDecimal, groundOwnsInspector } from "@/lib/perception";
+import {
+  absorbLive,
+  confirmPatch,
+  dismissPatch,
+  loadPatches,
+  mergeAt,
+  persistPatches,
+  resolveZone,
+  writePatch,
+  type ZoneEdit,
+  type ZonePatch,
+} from "@/lib/zone-memory";
 import {
   formatLat,
   formatLon,
@@ -57,6 +69,9 @@ export function AtlasApp() {
   const [intent, setIntent] = useState<MapIntent | null>(null);
   const [scene, setScene] = useState<SceneSample | null>(null);
   const [attention, setAttention] = useState<AttentionMap>(() => loadAttention());
+  const [patches, setPatches] = useState<ZonePatch[]>(() => loadPatches());
+  const [reclass, setReclass] = useState("residential");
+  const absorbKey = useRef("");
 
   const scale = useMemo(() => createChoroplethScale(metric), [metric]);
   const selected = selectedId
@@ -67,9 +82,12 @@ export function AtlasApp() {
   const walking = viewMode === "walk";
   const look = viewLatLon(rotation);
   const tooHigh = needsDistrictScale(scene?.zoom);
+  const learned = scene
+    ? resolveZone(patches, scene.lng, scene.lat, scene.zoneClass, scene.zoneLabel)
+    : null;
   const hits = useMemo(
-    () => evaluateRules({ overlays, scene, zoneFilter: intent?.zoneClass ?? null }),
-    [overlays, scene, intent],
+    () => evaluateRules({ overlays, scene, zoneFilter: intent?.zoneClass ?? null, patches }),
+    [overlays, scene, intent, patches],
   );
   const perception = useMemo(
     () => buildPerception({ scene, overlays, object: picked, rules: hits, attention }),
@@ -104,9 +122,96 @@ export function AtlasApp() {
     }
   }, [inspectCountry]);
 
+  const commitPatches = useCallback((next: ZonePatch[]) => {
+    persistPatches(next);
+    setPatches(next);
+  }, []);
+
+  const applyEdit = useCallback(
+    (action: ZoneEdit, klass: string | null, source: "walk" | "query", note?: string, at?: { lng: number; lat: number }) => {
+      const point = at ?? (scene ? { lng: scene.lng, lat: scene.lat } : DISTRICT_VIEW);
+      setOverlays((prev) => ({ ...prev, zoning: true, metric: false }));
+      commitPatches(
+        action === "merge"
+          ? mergeAt(patches, point.lng, point.lat, klass)
+          : writePatch(patches, {
+              lng: point.lng,
+              lat: point.lat,
+              action,
+              class: klass,
+              note:
+                note ??
+                (action === "tag"
+                  ? "Observed on foot — OSM missed this."
+                  : action === "split"
+                    ? "Subdivided at look-at"
+                    : `Taught ${klass ?? "district"}`),
+              source,
+            }),
+      );
+      setLiveNote(
+        action === "reclass"
+          ? `Taught ${klass ?? "this"} at the look-at`
+          : action === "split"
+            ? "Split a local district here"
+            : action === "merge"
+              ? "Merged nearby learned districts"
+              : "Tagged this look-at",
+      );
+    },
+    [scene, patches, commitPatches],
+  );
+
+  useEffect(() => {
+    if (!scene) return;
+    const key = [
+      scene.lng.toFixed(3),
+      scene.lat.toFixed(3),
+      scene.zoneClass,
+      scene.wildlife,
+      scene.transit,
+      scene.events,
+      scene.alerts,
+      scene.quakes,
+      overlays.wildlife,
+      overlays.transit,
+      overlays.events,
+      overlays.alerts,
+      overlays.quakes,
+    ].join("|");
+    if (key === absorbKey.current) return;
+    absorbKey.current = key;
+    const next = absorbLive(patches, scene, overlays);
+    if (next !== patches && JSON.stringify(next) !== JSON.stringify(patches)) {
+      commitPatches(next);
+    }
+  }, [scene, overlays, patches, commitPatches]);
+
   const applyIntent = useCallback(
     (next: MapIntent, address?: MapObject) => {
       setIntent(next);
+      if (next.edit) {
+        setOverlays(assembleOverlays(next));
+        inspectCountry(null);
+        const run = (lng: number, lat: number) =>
+          applyEdit(next.edit!, next.zoneClass, "query", next.summary, { lng, lat });
+        if (needsDistrictScale(scene?.zoom)) {
+          setViewMode("atlas");
+          window.setTimeout(() => {
+            mapRef.current?.dropToDistricts(next.zoneClass);
+            const spot =
+              (next.zoneClass && DISTRICT_SPOTS[next.zoneClass]) || DISTRICT_VIEW;
+            run(spot.lng, spot.lat);
+          }, 320);
+        } else if (scene) {
+          run(scene.lng, scene.lat);
+        }
+        if (next.walk) {
+          setViewMode("walk");
+          window.setTimeout(() => mapRef.current?.enterWalk(), 400);
+        }
+        return;
+      }
       if (next.kind === "place" && next.countryId) {
         goToCountry(next.countryId);
         return;
@@ -165,7 +270,7 @@ export function AtlasApp() {
         window.setTimeout(() => mapRef.current?.dropToDistricts(next.zoneClass), 280);
       }
     },
-    [goToCountry, inspectCountry],
+    [goToCountry, inspectCountry, applyEdit, scene],
   );
 
   const onMetricChange = (id: MetricId) => {
@@ -269,6 +374,7 @@ export function AtlasApp() {
             onPickObject={onPickObject}
             zoneFilter={intent?.zoneClass ?? null}
             onScene={setScene}
+            patches={patches}
           />
           <MapTooltip
             hover={hover}
@@ -294,7 +400,14 @@ export function AtlasApp() {
           ) : null}
           {walking ? (
             <WalkHud
-              zoneLabel={scene?.zoneLabel ?? ""}
+              zoneLabel={learned?.label ?? scene?.zoneLabel ?? ""}
+              learned={learned?.patch ? learned.label : null}
+              reclass={reclass}
+              onReclassChange={setReclass}
+              onReclass={() => applyEdit("reclass", reclass, "walk")}
+              onTag={() => applyEdit("tag", learned?.class ?? scene?.zoneClass ?? null, "walk")}
+              onSplit={() => applyEdit("split", reclass, "walk")}
+              onMerge={() => applyEdit("merge", reclass, "walk")}
               onExit={() => setViewMode("godsEye")}
               onHold={(code, down) => mapRef.current?.holdKey(code, down)}
             />
@@ -338,7 +451,7 @@ export function AtlasApp() {
                   </div>
                   <HierarchyPanel
                     hits={hits}
-                    zoneLabel={scene?.zoneLabel}
+                    zoneLabel={learned?.label ?? scene?.zoneLabel}
                     onDropIn={() => {
                       setOverlays((prev) => ({ ...prev, zoning: true, streets: true }));
                       setViewMode("atlas");
@@ -355,6 +468,8 @@ export function AtlasApp() {
                       setViewMode("walk");
                       window.setTimeout(() => mapRef.current?.enterWalk(), 40);
                     }}
+                    onConfirm={(id) => commitPatches(confirmPatch(patches, id))}
+                    onDismiss={(id) => commitPatches(dismissPatch(patches, id))}
                   />
                   {overlays.metric && !overlays.zoning && !overlays.wildlife && !overlays.quakes ? (
                     <MapLegend metric={metric} stops={scale.stops} />

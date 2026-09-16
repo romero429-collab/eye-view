@@ -16,9 +16,18 @@ type HierarchyPanelProps = {
   zoneLabel?: string;
   onDropIn?: () => void;
   onWalk?: () => void;
+  onConfirm?: (patchId: string) => void;
+  onDismiss?: (patchId: string) => void;
 };
 
-export function HierarchyPanel({ hits, zoneLabel, onDropIn, onWalk }: HierarchyPanelProps) {
+export function HierarchyPanel({
+  hits,
+  zoneLabel,
+  onDropIn,
+  onWalk,
+  onConfirm,
+  onDismiss,
+}: HierarchyPanelProps) {
   if (hits.length === 0) return null;
   const needScale = hits.some((hit) => hit.id === "need-scale");
   const shownLabel = needScale ? undefined : zoneLabel;
@@ -47,6 +56,20 @@ export function HierarchyPanel({ hits, zoneLabel, onDropIn, onWalk }: HierarchyP
               </span>
             </p>
             <p className="mt-0.5 text-xs leading-snug text-muted">{hit.detail}</p>
+            {hit.id.startsWith("learn-") && hit.patchId && (onConfirm || onDismiss) ? (
+              <div className="mt-1.5 flex gap-1">
+                {onConfirm ? (
+                  <Button type="button" size="sm" onClick={() => onConfirm(hit.patchId!)}>
+                    Confirm
+                  </Button>
+                ) : null}
+                {onDismiss ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => onDismiss(hit.patchId!)}>
+                    Dismiss
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>
