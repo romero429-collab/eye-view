@@ -438,11 +438,113 @@ async function livestockFeatures(q: LiveQuery): Promise<FeatureCollection> {
 }
 
 async function plantFeatures(q: LiveQuery): Promise<FeatureCollection> {
-  const [vascular, grasses] = await Promise.all([
+  const [vascular, grasses, inat, osm] = await Promise.all([
     gbifOccurrences(7707728, q, 40, { kind: "plant", fallback: "Plant" }),
     gbifOccurrences(3073, q, 20, { kind: "plant", fallback: "Grass" }),
+    inaturalistPlants(q),
+    osmPlantFeatures(q),
   ]);
-  return { type: "FeatureCollection", features: [...vascular, ...grasses] };
+  const seen = new Set<string>();
+  const features: Feature[] = [];
+  for (const feat of [...vascular, ...grasses, ...inat, ...osm]) {
+    const geom = feat.geometry;
+    if (!geom || geom.type !== "Point") continue;
+    const [lon, lat] = geom.coordinates;
+    const key = `${feat.properties?.title}|${lon.toFixed(4)}|${lat.toFixed(4)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    features.push(feat);
+  }
+  return { type: "FeatureCollection", features };
+}
+
+type InatResult = {
+  results?: Array<{
+    species_guess?: string;
+    taxon?: { name?: string; preferred_common_name?: string };
+    location?: string;
+    observed_on?: string;
+    place_guess?: string;
+    uri?: string;
+  }>;
+};
+
+async function inaturalistPlants(q: LiveQuery): Promise<Feature[]> {
+  const lat = q.lat ?? (q.south != null && q.north != null ? (q.south + q.north) / 2 : null);
+  const lng = q.lng ?? (q.west != null && q.east != null ? (q.west + q.east) / 2 : null);
+  if (lat == null || lng == null || (q.zoom ?? 0) < 6) return [];
+  const span = q.west != null && q.east != null ? Math.abs(q.east - q.west) : 0.2;
+  const radius = Math.min(40, Math.max(2, span * 55));
+  const data = (await fetchJson(
+    `https://api.inaturalist.org/v1/observations?iconic_taxa=Plantae&lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}&radius=${radius.toFixed(1)}&per_page=40&order=desc&order_by=observed_on`,
+    8000,
+  )) as InatResult | null;
+  const features: Feature[] = [];
+  for (const rec of data?.results ?? []) {
+    const loc = rec.location?.split(",") ?? [];
+    const rlat = Number(loc[0]);
+    const rlon = Number(loc[1]);
+    if (!Number.isFinite(rlat) || !Number.isFinite(rlon)) continue;
+    const title =
+      rec.taxon?.preferred_common_name || rec.species_guess || rec.taxon?.name || "Plant";
+    features.push(
+      point(rlon, rlat, {
+        kind: "plant",
+        title,
+        detail: [rec.taxon?.name, rec.place_guess, rec.observed_on].filter(Boolean).join(" · "),
+        source: "iNaturalist",
+        facts: JSON.stringify(
+          [
+            rec.taxon?.name ? { label: "Taxon", value: rec.taxon.name } : null,
+            rec.observed_on ? { label: "When", value: rec.observed_on } : null,
+            { label: "Layer", value: "Plants" },
+            { label: "GIS", value: "iNaturalist observation" },
+          ].filter(Boolean),
+        ),
+      }),
+    );
+  }
+  return features;
+}
+
+async function osmPlantFeatures(q: LiveQuery): Promise<Feature[]> {
+  if (q.west == null || q.south == null || q.east == null || q.north == null) return [];
+  if ((q.zoom ?? 0) < 10) return [];
+  const span = Math.abs(q.east - q.west) * Math.abs(q.north - q.south);
+  if (span > 4) return [];
+  const bbox = `${q.south.toFixed(4)},${q.west.toFixed(4)},${q.north.toFixed(4)},${q.east.toFixed(4)}`;
+  const local = (q.zoom ?? 0) >= 13;
+  const body = `[out:json][timeout:16];(${
+    local ? `node["natural"="tree"](${bbox});` : ""
+  }way["natural"="wood"](${bbox});way["landuse"~"^(forest|orchard|vineyard|allotments|meadow)$"](${bbox});way["leisure"="garden"](${bbox});way["boundary"="protected_area"](${bbox});relation["boundary"="protected_area"](${bbox}););out center 160;`;
+  const elements = await overpassQuery(body);
+  const features: Feature[] = [];
+  for (const el of elements) {
+    const tags = el.tags ?? {};
+    const lat = el.lat ?? el.geometry?.[0]?.lat;
+    const lon = el.lon ?? el.geometry?.[0]?.lon;
+    if (lat == null || lon == null) continue;
+    const klass = tags.natural || tags.landuse || tags.leisure || tags.boundary || "vegetation";
+    const title = tags.name || klass.replace(/_/g, " ");
+    features.push(
+      point(lon, lat, {
+        kind: "plant",
+        title,
+        detail: [klass, tags.protection_title, tags.leaf_type].filter(Boolean).join(" · "),
+        source: "OpenStreetMap Overpass",
+        facts: JSON.stringify(
+          [
+            { label: "Layer", value: "Plants" },
+            { label: "GIS", value: "OSM vegetation" },
+            { label: "class", value: klass },
+            tags.genus ? { label: "Genus", value: tags.genus } : null,
+            tags.species ? { label: "Species", value: tags.species } : null,
+          ].filter(Boolean),
+        ),
+      }),
+    );
+  }
+  return features;
 }
 
 type MetarRow = {
@@ -464,8 +566,13 @@ type OpenMeteoCurrent = {
     precipitation?: number;
     wind_speed_10m?: number;
     weather_code?: number;
+    soil_moisture_0_to_1cm?: number;
   };
+  elevation?: number;
 };
+
+type UsgsElev = { value?: string | number };
+type AqiCurrent = { current?: { us_aqi?: number; pm2_5?: number } };
 
 async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
   const lat = q.lat ?? (q.south != null && q.north != null ? (q.south + q.north) / 2 : null);
@@ -475,7 +582,7 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
   const south = q.south ?? lat - 0.4;
   const east = q.east ?? lng + 0.6;
   const north = q.north ?? lat + 0.4;
-  const [metar, om] = await Promise.all([
+  const [metar, om, elev, aqi] = await Promise.all([
     fetchJson(
       `https://aviationweather.gov/api/data/metar?format=json&bbox=${south},${west},${north},${east}`,
       8000,
@@ -483,6 +590,14 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
     fetchJson(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=temperature_2m,precipitation,wind_speed_10m,weather_code`,
       8000,
+    ),
+    fetchJson(
+      `https://epqs.nationalmap.gov/v1/json?x=${lng.toFixed(5)}&y=${lat.toFixed(5)}&wkid=4326&units=Meters`,
+      6000,
+    ),
+    fetchJson(
+      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=us_aqi,pm2_5`,
+      6000,
     ),
   ]);
   const features: Feature[] = [];
@@ -517,6 +632,11 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
   }
   const stationWet = features.some((f) => Number(f.properties?.precip ?? 0) >= 0.2);
   const cur = (om as OpenMeteoCurrent | null)?.current ?? {};
+  const omElev = Number((om as OpenMeteoCurrent | null)?.elevation);
+  const usgsElev = Number((elev as UsgsElev | null)?.value);
+  const elevM = Number.isFinite(usgsElev) ? usgsElev : Number.isFinite(omElev) ? omElev : null;
+  const aqiVal = Number((aqi as AqiCurrent | null)?.current?.us_aqi);
+  const pm25 = Number((aqi as AqiCurrent | null)?.current?.pm2_5);
   const nodePrecip = stationWet ? Math.max(Number(cur.precipitation ?? 0), 0.5) : (cur.precipitation ?? 0);
   features.push(
     point(lng, lat, {
@@ -524,16 +644,21 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
       title: "Look-at climate node",
       detail: stationWet
         ? "Nearby station reports precipitation. IOM treats this district as wet."
-        : "Open-Meteo current conditions at the crosshair — IOM's local nerve.",
-      source: "Open-Meteo",
+        : "Open-Meteo, USGS elevation, and air quality at the crosshair — IOM's local nerve.",
+      source: "Open-Meteo · USGS 3DEP · Open-Meteo Air Quality",
       precip: nodePrecip,
       temp: cur.temperature_2m ?? null,
       wind: cur.wind_speed_10m ?? null,
+      elev: elevM,
+      aqi: Number.isFinite(aqiVal) ? aqiVal : null,
       facts: JSON.stringify(
         [
           cur.temperature_2m != null ? { label: "Temp °C", value: String(cur.temperature_2m) } : null,
           cur.precipitation != null ? { label: "Precip mm", value: String(cur.precipitation) } : null,
           cur.wind_speed_10m != null ? { label: "Wind km/h", value: String(cur.wind_speed_10m) } : null,
+          elevM != null ? { label: "Elev m", value: String(Math.round(elevM)) } : null,
+          Number.isFinite(aqiVal) ? { label: "US AQI", value: String(Math.round(aqiVal)) } : null,
+          Number.isFinite(pm25) ? { label: "PM2.5", value: `${pm25.toFixed(1)} µg/m³` } : null,
           { label: "Kind", value: "Climate node" },
         ].filter(Boolean),
       ),

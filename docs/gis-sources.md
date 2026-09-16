@@ -30,12 +30,38 @@ always by zoom 8. Zone colors no longer mix with GDP green.
 | Overlay | Source | Readout |
 | --- | --- | --- |
 | Wild | GBIF hex density (Mammalia) + occurrence search (mammals + birds) | Amber → dense heat. Click a cell → “Wildlife density”, then the nearest named species. |
-| Plants | GBIF Plantae density + Tracheophyta / Poaceae occurrences; OSM wood/grass/farmland/wetland | Green heat. Click a cell → named tree, shrub, or crop. Vegetation is structural data. |
+| Plants | **GIS stack, not labels:** NASA GIBS MODIS NDVI, GBIF Plantae density + Tracheophyta/Poaceae occurrences, iNaturalist Plantae observations, OSM trees/woods/orchards/gardens/protected areas (Overpass), OSM hydro (`water`) | Green heat + named plants. Vegetation is structural data. Click a cell or a tree. |
 | Domestic | GBIF cattle density + livestock taxa | Sand heat. |
 | Quakes | USGS 2.5+ last 24h | Magnitude-colored rings on a seismic heat field. |
 
 A tap never flies to a previously selected country. The inspector names the
 **layer** (Wild, Quakes, Zoning) and the **ground** country only as context.
+
+## Every public GIS feed this HUD can actually reach
+
+No worldwide cadastral or legal-zoning API exists. These are the feeds that
+answer without an API key and are wired into perception:
+
+| Domain | Source | Overlay |
+| --- | --- | --- |
+| Imagery | NASA GIBS Blue Marble + Esri World Imagery | Base |
+| Greenness | NASA GIBS MODIS Terra NDVI 8-day | Plants |
+| Occurrences | GBIF density + occurrence search | Wild, Plants, Domestic |
+| Citizen science | iNaturalist Plantae observations | Plants |
+| Land cover | OSM OpenMapTiles landuse / landcover / park / water | Zoning, Plants |
+| Trees / woods | OSM Overpass `natural=tree/wood`, forest, orchard, vineyard, garden, protected_area | Plants |
+| Elevation | USGS 3DEP EPQS (US) | IoT look-at node |
+| Atmosphere | AviationWeather METAR, Open-Meteo, Open-Meteo Air Quality (US AQI / PM2.5) | IoT |
+| Seismic | USGS earthquakes | Quakes |
+| Weather raster | RainViewer | Radar |
+| Hazards | NASA EONET, NWS alerts | Events, Alerts |
+| Movement | GTFS-RT, ADS-B, Amtrak/VIA | Transit, Flights, Rail |
+| Lots | Regrid US parcels, OSM buildings, Nominatim | Plots |
+| Trails | Waymarked Trails hiking / riding | Hiking, Domestic |
+
+Ask `what's growing here` to assemble the plant GIS. Zoning then coordinates:
+wildlife clusters on cover, transit avoids sensitive vegetation, a commercial
+polygon full of native plants proposes a reclass.
 
 ## OpenStreetMap stack
 

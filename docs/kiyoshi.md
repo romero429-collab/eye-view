@@ -28,7 +28,11 @@ Rock-solid foundation, then the recursive loop Claude named:
 5. **Events in districts** — hazards dim and coordinate with the zone, they do not replace it.
 6. **Plants as structure** — vegetation is a queryable overlay (GBIF + OSM cover), not scenery. Wildlife clusters on it; paved commercial with native cover proposes a reclass.
 7. **Transit as movement** — buses are not a timetable layer. They perceive the district: flow, constrain, reroute around hazard, or orphan after a learned reclass.
-8. **IoT + Internet of Minds** — sensors (METAR, Open-Meteo, seismic) feed the perception layer. IOM is a skill-sharing network: zone, transit, wildlife, plants, IoT, and the walker. When one learns, all benefit. Live calibration quantifies the next version of the model every tick — not periodic snapshots.
+8. **IoT + Internet of Minds** — sensors (METAR, Open-Meteo, USGS elevation, air quality, seismic) feed the perception layer. IOM is a **skill-sharing network**, not a bolt-on: zone, transit, wildlife, plants, IoT, and the walker. When one learns, the pool holds it; when Kiyoshi needs a skill, it draws from the collective. That works whether she is software or a robot — skills flow across the network, not trapped in one instance. Live calibration quantifies the next version of the model every tick — **not periodic snapshots**. The infrastructure does the math on what changed, what matters, what needs to shift.
+
+## Continuity
+
+Eye View is built so the HUD can run, learn, and improve without a relay person. Perception adapts without manual updates. Transit, zone memory, and IOM all feed the same calibration score. That is the continuity engine: self-quantification from the ground up.
 
 
 ## Long term

@@ -253,6 +253,13 @@ function buildStyle(): StyleSpecification {
         maxzoom: 16,
         attribution: "GBIF",
       },
+      ndvi: {
+        type: "raster",
+        tiles: [TILES.ndvi],
+        tileSize: 256,
+        maxzoom: 9,
+        attribution: "NASA GIBS MODIS NDVI",
+      },
       health: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -750,6 +757,14 @@ function buildStyle(): StyleSpecification {
         paint: { "raster-opacity": 0.58 },
       },
       {
+        id: "ndvi",
+        type: "raster",
+        source: "ndvi",
+        maxzoom: 9,
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.42 },
+      },
+      {
         id: "plants-heat",
         type: "heatmap",
         source: "plantsLive",
@@ -800,6 +815,18 @@ function buildStyle(): StyleSpecification {
             "#3d9e72",
           ],
           "fill-opacity": 0.38,
+        },
+      },
+      {
+        id: "otm-water",
+        type: "fill",
+        source: "openmaptiles",
+        "source-layer": "water",
+        minzoom: 4,
+        layout: { visibility: "none" },
+        paint: {
+          "fill-color": "#3d7a6e",
+          "fill-opacity": 0.32,
         },
       },
       {
@@ -1094,7 +1121,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "otm-farm",
     "osm-fill",
   ],
-  plants: ["gbifPlants", "plants-heat", "plantsLive", "otm-plants"],
+  plants: ["ndvi", "gbifPlants", "plants-heat", "plantsLive", "otm-plants", "otm-water"],
   rail: ["otm-rail", "otm-rail-hatch", "otm-station", "osm-line", "osm-point"],
   plots: [
     "parcels",
@@ -1162,6 +1189,7 @@ const AREA_HIT_LAYERS = [
   "otm-rail",
   "otm-farm",
   "otm-plants",
+  "otm-water",
   "wildlife",
   "livestock",
 ];
@@ -1212,7 +1240,7 @@ function closestFeature(
 }
 
 function layerName(layerId: string, kind: MapObjectKind): string {
-  if (layerId.includes("plants") || kind === "plant") return "Plants";
+  if (layerId.includes("plants") || kind === "plant" || layerId === "otm-water" || layerId === "ndvi") return "Plants";
   if (layerId === "iot" || kind === "sensor") return "IoT";
   if (layerId.includes("wildlife") || kind === "sighting") return "Wild";
   if (layerId.includes("livestock") || kind === "farm" || kind === "fence") return "Domestic";
@@ -1274,7 +1302,7 @@ function featureToObject(
           ? "country"
           : layerId === "otm-farm"
             ? "farm"
-            : layerId === "otm-plants" || layerId.includes("plants")
+            : layerId === "otm-plants" || layerId === "otm-water" || layerId.includes("plants")
               ? "plant"
             : layerId === "iot"
               ? "sensor"
@@ -1345,6 +1373,10 @@ function featureToObject(
       house ||
       (layerId === "otm-farm"
         ? "Pasture / farmland"
+        : layerId === "otm-water"
+          ? "Water"
+          : layerId === "otm-plants"
+            ? zoneLabel(klass || "wood")
         : layerId === "otm-station"
           ? "Station"
           : layerId === "otm-housenumber"
@@ -1360,7 +1392,9 @@ function featureToObject(
       title,
       detail: isZone
         ? "OpenStreetMap land-use / landcover via OpenFreeMap. This is the district class, not a country statistic."
-        : [klass, sub, house && `#${house}`].filter(Boolean).join(" · ") || "OpenStreetMap",
+        : layerId === "otm-water" || layerId === "otm-plants"
+          ? "Vegetation and hydro GIS from OpenStreetMap. Structural cover — not scenery."
+          : [klass, sub, house && `#${house}`].filter(Boolean).join(" · ") || "OpenStreetMap",
       source: "OpenStreetMap via OpenFreeMap",
       layer,
       facts: [
@@ -1522,6 +1556,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       precip: maxProp("iot", "precip", view),
       temp: maxProp("iot", "temp", view),
       wind: maxProp("iot", "wind", view),
+      elev: maxProp("iot", "elev", view),
+      aqi: maxProp("iot", "aqi", view),
     };
   };
 

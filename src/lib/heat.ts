@@ -228,13 +228,13 @@ export function densityObject(
       kind: "plant",
       title: "Plant density",
       detail:
-        "GBIF vascular-plant occurrence heat. Trees, shrubs, and crops as structural data — not scenery, not a country.",
-      source: "GBIF occurrence density (Plantae)",
+        "Vegetation GIS at this look-at: GBIF Plantae heat, NASA NDVI, iNaturalist, OSM trees and cover. Structural data — not scenery, not a country.",
+      source: "GBIF · NASA GIBS NDVI · iNaturalist · OSM",
       layer: "Plants",
       facts: [
         { label: "Layer", value: "Plants" },
         { label: "Readout", value: "Heat cell · vegetation" },
-        { label: "Taxa", value: "Vascular plants and grasses" },
+        { label: "Taxa", value: "Plantae · trees · crops · NDVI" },
         { label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` },
       ],
       lng,

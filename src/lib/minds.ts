@@ -129,6 +129,17 @@ export function shareLook(args: {
       t: now,
     });
   }
+  if ((scene.plants ?? 0) > 0) {
+    pool = publish(pool, {
+      id: skillId("plants", "cover:live"),
+      mind: "plants",
+      name: "vegetation is structural",
+      klass: learned.class ?? undefined,
+      lng: scene.lng,
+      lat: scene.lat,
+      t: now,
+    });
+  }
   for (const c of consequences) {
     const mind: MindId =
       c.target === "transit"
@@ -216,7 +227,9 @@ export function calibrate(args: {
   if (hazard) matter.push("live hazard in the look-at");
   if (learned?.immediate) matter.push("learned ground is in force");
   if (wired) matter.push("sensors are live");
+  if ((scene?.plants ?? 0) > 0) matter.push("vegetation is structural");
   if (changed.includes("zone")) matter.push("the district itself moved");
+  if (matter.length === 0) matter.push("live calibration — not a snapshot");
 
   const cons = orchestrate({ scene, overlays, patches });
   const shift = cons.filter((c) => c.action === "reroute" || c.action === "adapt" || c.action === "anticipate").map((c) => c.title);

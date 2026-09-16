@@ -55,6 +55,15 @@ describe("IOM", () => {
     assert.ok(cons.some((c) => c.id === "iom-migrate" && c.action === "anticipate"));
   });
 
+  it("treats plants as a structural GIS skill other minds can draw", () => {
+    const cons = orchestrate({
+      scene: { ...scene, plants: 3, zoneClass: "commercial", zoneLabel: "Commercial" },
+      overlays: { ...DEFAULT_OVERLAYS, plants: true, zoning: true },
+    });
+    assert.ok(cons.some((c) => c.id === "iom-plants" && c.target === "plants"));
+    assert.ok(cons.some((c) => c.id === "iom-plants-zone" && c.action === "adapt" && c.target === "zone"));
+  });
+
   it("shows the nerve as live even in fair weather", () => {
     const cons = orchestrate({
       scene: { ...scene, sensors: 2, precip: 0 },

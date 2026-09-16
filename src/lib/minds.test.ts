@@ -33,6 +33,17 @@ describe("Internet of Minds", () => {
     assert.ok(drawn.some((s) => s.mind === "walk"));
   });
 
+  it("publishes vegetation as a shared skill when plants are in the look-at", () => {
+    const pool = shareLook({
+      pool: [],
+      scene: { ...scene, plants: 5 },
+      now: 1,
+    });
+    assert.ok(pool.some((s) => s.mind === "plants" && /vegetation/i.test(s.name)));
+    const drawn = draw(pool, "zone");
+    assert.ok(drawn.some((s) => s.mind === "plants"));
+  });
+
   it("raises evidence on a skill without duplicating it", () => {
     const first = publish([], {
       id: skillId("walk", "district:park"),

@@ -23,7 +23,7 @@ const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
   { id: "transit", re: /\b(transit|bus(?:es)?|gtfs|rout(?:e|es)|vehicles?|riders?|movement|corridors?|reroute)\b/ },
   { id: "flights", re: /\b(flights?|aircraft|ads-?b|planes?)\b/ },
   { id: "wildlife", re: /\b(animals?|wildlife|wild|mammals?|habitat|migration|fauna|critters?)\b/ },
-  { id: "plants", re: /\b(plants?|vegetation|flora|trees?|shrubs?|crops?|growing|botany|native plants)\b/ },
+  { id: "plants", re: /\b(plants?|vegetation|flora|trees?|shrubs?|crops?|growing|botany|native plants|ndvi|greenness|canopy)\b/ },
   { id: "livestock", re: /\b(livestock|cattle|herd(?:s|ing)?|horses?|domestic)\b/ },
   { id: "trails", re: /\b(terrain|hiking|trails?|footpaths?|paths?)\b/ },
   { id: "zoning", re: /\b(zon(?:e|es|ing)|land-?use|districts?)\b/ },

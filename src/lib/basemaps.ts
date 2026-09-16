@@ -76,7 +76,7 @@ export const OVERLAYS: OverlayDef[] = [
   {
     id: "plants",
     label: "Plants",
-    blurb: "Trees, shrubs, crops — vegetation as data",
+    blurb: "Trees, shrubs, crops, NDVI — vegetation as GIS",
     live: true,
     group: "animals",
   },
@@ -180,6 +180,12 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   iot: false,
 };
 
+export function gibsNdviTileUrl(): string {
+  const d = new Date(Date.now() - 20 * 86_400_000);
+  const iso = d.toISOString().slice(0, 10);
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDVI_8Day/default/${iso}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.png`;
+}
+
 export const TILES = {
   marble:
     "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_NextGeneration/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg",
@@ -197,12 +203,13 @@ export const TILES = {
     "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=2441022&bin=hex&hexPerTile=22&style=purpleYellow-noborder.poly",
   gbifPlants:
     "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=6&bin=hex&hexPerTile=22&style=green.poly",
+  ndvi: gibsNdviTileUrl(),
   parcels:
     "https://tiles.arcgis.com/tiles/KzeiCaQsMoeCfoCq/arcgis/rest/services/Regrid_Nationwide_Parcel_Boundaries_v1/MapServer/tile/{z}/{y}/{x}",
 } as const;
 
 export const TILE_ATTRIBUTION =
-  "NASA GIBS, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, USGS, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, Waymarked Trails, disease.sh";
+  "NASA GIBS NDVI, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, USGS, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Waymarked Trails, Open-Meteo, disease.sh";
 
 export {
   COVER_CLASS_FILTER,

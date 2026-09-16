@@ -32,6 +32,9 @@ export type IomScene = {
   precip?: number;
   temp?: number;
   wind?: number;
+  elev?: number;
+  soil?: number;
+  aqi?: number;
 };
 
 const WET_MM = 0.2;
@@ -115,6 +118,28 @@ export function orchestrate(args: {
       title: "Migration expected on this cover",
       detail: "Animals follow vegetation. The system anticipates clustering here instead of waiting for a count spike.",
     });
+  }
+
+  if (overlays.plants && (scene.plants ?? 0) > 0) {
+    out.push({
+      id: "iom-plants",
+      cause: "plant gis",
+      target: "plants",
+      action: "update",
+      title: "Vegetation is structural here",
+      detail: "GBIF, iNaturalist, OSM trees, and NDVI are queryable ground — not scenery. Other minds draw this skill.",
+    });
+    const klass = learned.class ?? scene.zoneClass;
+    if (klass === "commercial" || klass === "retail" || klass === "industrial") {
+      out.push({
+        id: "iom-plants-zone",
+        cause: "native cover",
+        target: "zone",
+        action: "adapt",
+        title: "Living cover fights this district class",
+        detail: `${learned.label} is paved on paper. Plants on the ground propose a park / wood reclass — the zone adapts, the paper does not win.`,
+      });
+    }
   }
 
   if (overlays.iot && overlays.plants && wet) {

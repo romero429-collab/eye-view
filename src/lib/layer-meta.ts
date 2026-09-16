@@ -62,7 +62,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   plants: {
     icon: Leaf,
     usage:
-      "GBIF plant density (green heat) plus OSM wood, grass, farmland, wetland. Click a cell for a named tree, shrub, or crop — vegetation is structural, not scenery.",
+      "Vegetation as GIS, not scenery: NASA GIBS MODIS NDVI, GBIF Plantae density, iNaturalist observations, OSM trees/woods/orchards/protected areas, and hydro. Click a cell for a named plant. Animals cluster on it; paved commercial with native cover proposes a reclass.",
   },
   rail: {
     icon: TrainFront,
@@ -112,7 +112,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   iot: {
     icon: Radio,
     usage:
-      "IoT into the perception layer: METAR weather stations plus an Open-Meteo node at the look-at. The Internet of Minds uses precip, wind, and seismic to reroute transit and share skills across zone, wildlife, and walk.",
+      "IoT into the perception layer: METAR weather stations, USGS 3DEP elevation, Open-Meteo climate and US AQI at the look-at. The Internet of Minds uses precip, wind, air, and seismic to reroute transit and share skills across zone, wildlife, plants, and walk.",
   },
 };
 

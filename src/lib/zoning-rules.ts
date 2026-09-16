@@ -35,6 +35,9 @@ export type SceneSample = {
   precip?: number;
   temp?: number;
   wind?: number;
+  elev?: number;
+  soil?: number;
+  aqi?: number;
 };
 
 /** OpenMapTiles landuse/cover is not in the globe tiles until city/regional zoom. */
