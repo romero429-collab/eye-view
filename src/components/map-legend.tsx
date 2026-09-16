@@ -1,6 +1,7 @@
 import { METRICS, type MetricId } from "@/lib/metrics";
 import type { LegendStop } from "@/lib/color-scale";
 import { COVER_SWATCHES, HEAT_RAMPS, LANDUSE_SWATCHES, type HeatRampId } from "@/lib/heat";
+import { MOOD_COLOR, type TransitMood } from "@/lib/transit-sense";
 
 type MapLegendProps = {
   metric: MetricId;
@@ -80,19 +81,21 @@ export function OverlayKey({
   quakes,
   livestock,
   plants,
+  transit,
 }: {
   zoning: boolean;
   wildlife: boolean;
   quakes: boolean;
   livestock: boolean;
   plants: boolean;
+  transit?: boolean;
 }) {
   const ramps: Array<{ id: HeatRampId; title: string }> = [];
   if (wildlife) ramps.push({ id: "wildlife", title: "Wild" });
   if (livestock) ramps.push({ id: "livestock", title: "Domestic" });
   if (plants) ramps.push({ id: "plants", title: "Plants" });
   if (quakes) ramps.push({ id: "quakes", title: "Quakes" });
-  if (!zoning && ramps.length === 0) return null;
+  if (!zoning && ramps.length === 0 && !transit) return null;
   return (
     <div
       className="pointer-events-none max-w-56 rounded-[calc(var(--radius-md)+4px)] border border-border bg-surface p-3 shadow-[var(--shadow-panel)] md:max-w-72"
@@ -154,6 +157,24 @@ export function OverlayKey({
           </div>
         );
       })}
+      {transit ? (
+        <div className={zoning || ramps.length ? "mt-3" : ""}>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-label text-subtle">
+            Movement
+          </p>
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-1">
+            {(["flowing", "constrained", "reroute", "orphan"] as TransitMood[]).map((mood) => (
+              <li key={mood} className="flex items-center gap-1.5 text-xs text-muted">
+                <span
+                  className="size-2.5 shrink-0 rounded-sm"
+                  style={{ background: MOOD_COLOR[mood] }}
+                />
+                <span className="truncate capitalize">{mood}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -19,7 +19,7 @@ Also copied (private) into:
 
 Type what you want instead of hunting toggles. Chips under the bar run the same recipes, and they reorder toward what you have been inspecting.
 
-- `transit in industrial` — assembles transit + streets + zoning, then drops to city scale
+- `how does transit move here` — vehicles perceive the district. Flood reroutes; a learned reclass can orphan a paper route.
 - `terrain for animals here` — wildlife + trails + zoning at the look-at
 - `walk this street` — drops to ground level with 3D buildings
 - `this is residential` — teaches the look-at; a local patch overrides OSM

@@ -474,13 +474,14 @@ export function AtlasApp() {
                   {overlays.metric && !overlays.zoning && !overlays.wildlife && !overlays.plants && !overlays.quakes ? (
                     <MapLegend metric={metric} stops={scale.stops} />
                   ) : null}
-                  {overlays.zoning || overlays.wildlife || overlays.quakes || overlays.livestock || overlays.plants ? (
+                  {overlays.zoning || overlays.wildlife || overlays.quakes || overlays.livestock || overlays.plants || overlays.transit ? (
                     <OverlayKey
                       zoning={overlays.zoning && !tooHigh}
                       wildlife={overlays.wildlife}
                       quakes={overlays.quakes}
                       livestock={overlays.livestock}
                       plants={overlays.plants}
+                      transit={overlays.transit}
                     />
                   ) : null}
                 </>

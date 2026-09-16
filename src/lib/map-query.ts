@@ -20,7 +20,7 @@ export type MapIntent = {
 };
 
 const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
-  { id: "transit", re: /\b(transit|bus(?:es)?|gtfs|rout(?:e|es)|vehicles?|riders?)\b/ },
+  { id: "transit", re: /\b(transit|bus(?:es)?|gtfs|rout(?:e|es)|vehicles?|riders?|movement|corridors?|reroute)\b/ },
   { id: "flights", re: /\b(flights?|aircraft|ads-?b|planes?)\b/ },
   { id: "wildlife", re: /\b(animals?|wildlife|wild|mammals?|habitat|migration|fauna|critters?)\b/ },
   { id: "plants", re: /\b(plants?|vegetation|flora|trees?|shrubs?|crops?|growing|botany|native plants)\b/ },
@@ -72,7 +72,7 @@ const STOP = new Set([
 ]);
 
 export const QUERY_EXAMPLES = [
-  "transit in industrial",
+  "how does transit move here",
   "terrain for animals here",
   "walk this street",
   "this is residential",
@@ -187,6 +187,7 @@ export function parseMapQuery(raw: string): MapIntent {
   if (zone && !overlays.includes("zoning")) overlays.push("zoning");
   if (edit && !overlays.includes("zoning")) overlays.push("zoning");
   if (overlays.includes("transit") && !overlays.includes("streets")) overlays.push("streets");
+  if (overlays.includes("transit") && !overlays.includes("zoning")) overlays.push("zoning");
   if (overlays.includes("rail") && !overlays.includes("streets")) overlays.push("streets");
 
   const country = matchCountry(text);
@@ -238,7 +239,7 @@ export function assembleOverlays(intent: MapIntent): OverlayState {
   }
   if (intent.zoneClass) next.zoning = true;
   if (intent.edit) next.zoning = true;
-  if (next.wildlife || next.livestock || next.plants || next.trails) next.zoning = true;
+  if (next.wildlife || next.livestock || next.plants || next.trails || next.transit) next.zoning = true;
   if (next.transit || next.rail) next.streets = true;
   return next;
 }

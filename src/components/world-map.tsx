@@ -59,6 +59,13 @@ import {
 } from "@/lib/heat";
 import { DISTRICT_ZOOM, radarDimFactor, type SceneSample } from "@/lib/zoning-rules";
 import { patchesToGeoJSON, type ZonePatch } from "@/lib/zone-memory";
+import {
+  detourCollection,
+  loadCorridors,
+  perceiveMovement,
+  rememberCorridor,
+  stampTransit,
+} from "@/lib/transit-sense";
 
 declare global {
   interface Window {
@@ -288,6 +295,10 @@ function buildStyle(): StyleSpecification {
         data: { type: "FeatureCollection", features: [] },
       },
       transit: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      transitDetour: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
@@ -1005,11 +1016,32 @@ function buildStyle(): StyleSpecification {
         source: "transit",
         layout: { visibility: "none" },
         paint: {
-          "circle-radius": 4,
-          "circle-color": "#7ecad4",
+          "circle-radius": 4.4,
+          "circle-color": [
+            "match",
+            ["coalesce", ["get", "mood"], "flowing"],
+            "reroute",
+            "#c45c2a",
+            "constrained",
+            "#d4a054",
+            "orphan",
+            "#8b90a0",
+            "#7ecad4",
+          ],
           "circle-opacity": 0.92,
           "circle-stroke-color": "#e7eaed",
           "circle-stroke-width": 0.6,
+        },
+      },
+      {
+        id: "transit-detour",
+        type: "line",
+        source: "transitDetour",
+        layout: { visibility: "none" },
+        paint: {
+          "line-color": "#c45c2a",
+          "line-width": 1.8,
+          "line-opacity": 0.85,
         },
       },
     ],
@@ -1057,7 +1089,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
   health: ["health"],
   radar: ["radar"],
   quakes: ["quakes-heat", "quakes"],
-  transit: ["transit"],
+  transit: ["transit", "transit-detour"],
   flights: ["flights"],
   alerts: ["alerts"],
   events: ["events"],
@@ -1310,6 +1342,8 @@ function featureToObject(
   if (!facts.some((f) => f.label === "Layer")) {
     facts.unshift({ label: "Layer", value: layer });
   }
+  if (props.mood) facts.push({ label: "Movement", value: String(props.mood) });
+  if (props.sense) facts.push({ label: "Through", value: String(props.sense) });
   return {
     kind,
     title: String(props.title ?? props.name ?? layerId),
@@ -1367,6 +1401,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
   const liveNoteRef = useRef(onLiveNote);
   const pickRef = useRef(onPickObject);
   const overlaysRef = useRef(overlays);
+  const patchesRef = useRef(patches);
   const keysRef = useRef(new Set<string>());
   const speedRef = useRef(0);
   const onSceneRef = useRef(onScene);
@@ -1376,6 +1411,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
   liveNoteRef.current = onLiveNote;
   pickRef.current = onPickObject;
   overlaysRef.current = overlays;
+  patchesRef.current = patches;
   onSceneRef.current = onScene;
   hoverCbRef.current = onHover;
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1900,6 +1936,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         });
       };
       bindLiveLayer("transit", "transit");
+      bindLiveLayer("transit-detour", "transit");
       bindLiveLayer("flights", "flight");
       bindLiveLayer("alerts", "alert");
       bindLiveLayer("events", "event");
@@ -2283,6 +2320,23 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               count?: number;
             };
             if (cancelled) return;
+            if (kind === "transit") {
+              const ov = overlaysRef.current;
+              const scene = sampleScene();
+              const sense = perceiveMovement({
+                scene,
+                overlays: ov,
+                patches: patchesRef.current,
+                book: loadCorridors(),
+                vehicles: data.features.length,
+              });
+              if (sense.zoneClass) rememberCorridor(loadCorridors(), sense.zoneClass, sense.mood, Math.max(1, data.features.length));
+              const stamped = stampTransit(data, sense);
+              (map.getSource("transit") as GeoJSONSource | undefined)?.setData(stamped);
+              (map.getSource("transitDetour") as GeoJSONSource | undefined)?.setData(detourCollection(stamped));
+              notes.push(`${data.features.length} ${kind} · ${sense.mood}`);
+              return;
+            }
             (map.getSource(sourceFor(kind)) as GeoJSONSource | undefined)?.setData(
               data,
             );
@@ -2381,6 +2435,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     overlays.rail,
     overlays.plots,
     overlays.zoning,
+    overlays.quakes,
+    patches,
     ready,
   ]);
 

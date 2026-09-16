@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { assembleOverlays, parseMapQuery } from "./map-query.ts";
 
 describe("parseMapQuery", () => {
-  it("assembles transit inside a named zone instead of a toggle hunt", () => {
-    const intent = parseMapQuery("show me all transit routes in industrial");
+  it("asks how transit moves through the look-at, not for a timetable", () => {
+    const intent = parseMapQuery("how does transit move here");
     assert.equal(intent.kind, "ask");
+    assert.equal(intent.here, true);
     assert.ok(intent.overlays.includes("transit"));
     assert.ok(intent.overlays.includes("zoning"));
     assert.ok(intent.overlays.includes("streets"));
-    assert.equal(intent.zoneClass, "industrial");
   });
 
   it("reads animal terrain at the look-at", () => {

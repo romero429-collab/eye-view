@@ -1,6 +1,7 @@
 import type { OverlayId, OverlayState } from "./basemaps.ts";
 import { ZONE_SWATCHES, zoneLabel } from "./basemaps.ts";
 import { resolveZone, type ZonePatch } from "./zone-memory.ts";
+import { perceiveMovement } from "./transit-sense.ts";
 
 export type ZoneClassId = (typeof ZONE_SWATCHES)[number]["id"] | "unknown";
 
@@ -65,7 +66,11 @@ export function zoneClassOf(raw: string | null | undefined): ZoneClassId {
 export function coordinateToggle(state: OverlayState, id: OverlayId): OverlayState {
   const next: OverlayState = { ...state, [id]: !state[id] };
   if (!next[id]) return next;
-  if (id === "transit" || id === "rail") next.streets = true;
+  if (id === "transit" || id === "rail") {
+    next.streets = true;
+    next.zoning = true;
+    next.metric = false;
+  }
   if (id === "wildlife" || id === "livestock" || id === "plants" || id === "trails") next.zoning = true;
   if (id === "plots") next.zoning = true;
   if (id === "events" || id === "alerts") next.zoning = true;
@@ -188,12 +193,13 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
   }
 
   if (overlays.transit) {
+    const sense = perceiveMovement({ overlays, scene, patches, vehicles: scene?.transit ?? 0 });
     hits.push({
-      id: "transit-snap",
-      effect: "snap",
-      title: "Transit snapped to streets",
-      detail: "Vehicles stay on the road/rail network, not as free dots on the globe.",
-      local: (scene?.transit ?? 0) > 0,
+      id: "transit-sense",
+      effect: sense.mood === "flowing" ? "snap" : sense.mood === "orphan" ? "dim" : "avoid",
+      title: sense.title,
+      detail: sense.detail,
+      local: sense.vehicles > 0 || sense.learned || sense.mood !== "flowing",
     });
   }
 

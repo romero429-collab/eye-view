@@ -26,6 +26,7 @@ describe("coordinateToggle", () => {
     const withTransit = coordinateToggle(DEFAULT_OVERLAYS, "transit");
     assert.equal(withTransit.transit, true);
     assert.equal(withTransit.streets, true);
+    assert.equal(withTransit.zoning, true);
     const withWild = coordinateToggle(DEFAULT_OVERLAYS, "wildlife");
     assert.equal(withWild.wildlife, true);
     assert.equal(withWild.zoning, true);
@@ -58,7 +59,7 @@ describe("evaluateRules", () => {
     });
     assert.ok(hits.some((h) => h.id === "container"));
     assert.ok(hits.some((h) => h.id === "wild-industry" && h.effect === "avoid"));
-    assert.ok(hits.some((h) => h.id === "transit-snap"));
+    assert.ok(hits.some((h) => h.id === "transit-sense"));
   });
 
   it("asks you to drop closer instead of claiming an empty district contains the view", () => {

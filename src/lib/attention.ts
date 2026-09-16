@@ -19,7 +19,7 @@ const HINTS: Record<string, string[]> = {
   quake: ["quake", "seismic"],
   zoning: ["zone", "district", "land-use", "industrial", "residential"],
   zone: ["zone", "district", "industrial", "residential", "recreation"],
-  transit: ["transit", "bus", "route"],
+  transit: ["transit", "bus", "route", "movement", "corridor"],
   plots: ["plot", "lot", "address", "parcel"],
   walk: ["walk", "street"],
   recreation: ["recreation", "park", "pitch"],

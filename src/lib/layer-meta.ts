@@ -93,7 +93,8 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   },
   transit: {
     icon: Bus,
-    usage: "Live GTFS-Realtime vehicle positions.",
+    usage:
+      "Live vehicles perceive the district they occupy. Color is mood: flowing, constrained, rerouting around a hazard, or orphaned by a learned reclass — not a paper timetable.",
   },
   flights: {
     icon: Plane,
