@@ -24,6 +24,8 @@ const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
   { id: "flights", re: /\b(flights?|aircraft|ads-?b|planes?)\b/ },
   { id: "wildlife", re: /\b(animals?|wildlife|wild|mammals?|habitat|migration|fauna|critters?)\b/ },
   { id: "plants", re: /\b(plants?|vegetation|flora|trees?|shrubs?|crops?|growing|botany|native plants|ndvi|greenness|canopy)\b/ },
+  { id: "ground", re: /\b(rocks?|geology|lithology|elevation|ditches?|soil|material|bedrock|terrain elev)\b/ },
+  { id: "bugs", re: /\b(bugs?|insects?|beetles?|arthropods?)\b/ },
   { id: "livestock", re: /\b(livestock|cattle|herd(?:s|ing)?|horses?|domestic)\b/ },
   { id: "trails", re: /\b(terrain|hiking|trails?|footpaths?|paths?)\b/ },
   { id: "zoning", re: /\b(zon(?:e|es|ing)|land-?use|districts?)\b/ },
@@ -73,14 +75,14 @@ const STOP = new Set([
 ]);
 
 export const QUERY_EXAMPLES = [
-  "how does transit move here",
-  "terrain for animals here",
-  "walk this street",
-  "this is residential",
   "what's growing here",
+  "what rocks are here",
+  "what bugs are here",
+  "walk this street",
+  "how does transit move here",
+  "this is residential",
   "what's changing here",
   "what did we learn here",
-  "split this zone",
 ] as const;
 
 const THIS_IS_RE = /\b(?:this is|make this|reclassify(?: this)?(?: as)?|mark this(?: as)?)\b/;
@@ -183,6 +185,8 @@ export function parseMapQuery(raw: string): MapIntent {
   }
   if (walk && !overlays.includes("streets")) overlays.push("streets");
   if (walk && !overlays.includes("plots")) overlays.push("plots");
+  if (walk && !overlays.includes("plants")) overlays.push("plants");
+  if (walk && !overlays.includes("ground")) overlays.push("ground");
   if ((overlays.includes("wildlife") || overlays.includes("livestock") || overlays.includes("plants") || overlays.includes("trails")) &&
       !overlays.includes("zoning")) {
     overlays.push("zoning");
@@ -239,11 +243,13 @@ export function assembleOverlays(intent: MapIntent): OverlayState {
   if (intent.walk) {
     next.streets = true;
     next.plots = true;
+    next.plants = true;
+    next.ground = true;
     next.labels = true;
   }
   if (intent.zoneClass) next.zoning = true;
   if (intent.edit) next.zoning = true;
-  if (next.wildlife || next.livestock || next.plants || next.trails || next.transit || next.iot) next.zoning = true;
+  if (next.wildlife || next.livestock || next.plants || next.trails || next.transit || next.iot || next.ground || next.bugs) next.zoning = true;
   if (next.transit || next.rail) next.streets = true;
   return next;
 }

@@ -82,6 +82,7 @@ export function OverlayKey({
   livestock,
   plants,
   transit,
+  bugs,
 }: {
   zoning: boolean;
   wildlife: boolean;
@@ -89,11 +90,13 @@ export function OverlayKey({
   livestock: boolean;
   plants: boolean;
   transit?: boolean;
+  bugs?: boolean;
 }) {
   const ramps: Array<{ id: HeatRampId; title: string }> = [];
   if (wildlife) ramps.push({ id: "wildlife", title: "Wild" });
   if (livestock) ramps.push({ id: "livestock", title: "Domestic" });
   if (plants) ramps.push({ id: "plants", title: "Plants" });
+  if (bugs) ramps.push({ id: "wildlife", title: "Bugs" });
   if (quakes) ramps.push({ id: "quakes", title: "Quakes" });
   if (!zoning && ramps.length === 0 && !transit) return null;
   return (
@@ -153,7 +156,7 @@ export function OverlayKey({
       {ramps.map((ramp) => {
         const stops = HEAT_RAMPS[ramp.id].filter((s) => s.t > 0);
         return (
-          <div key={ramp.id} className={zoning ? "mt-3" : ramps[0]?.id === ramp.id ? "" : "mt-3"}>
+          <div key={`${ramp.id}-${ramp.title}`} className={zoning ? "mt-3" : ramps[0]?.id === ramp.id ? "" : "mt-3"}>
             <p className="mb-1.5 text-xs font-medium uppercase tracking-label text-subtle">
               {ramp.title} heat
             </p>

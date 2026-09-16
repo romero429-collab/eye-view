@@ -175,14 +175,14 @@ export function quakeCircleColor(): ExpressionSpecification {
   ];
 }
 
-export type DensityKind = "wildlife" | "livestock" | "plants" | "quakes";
+export type DensityKind = "wildlife" | "livestock" | "plants" | "quakes" | "bugs" | "ndvi";
 
 export function densityObject(
   kind: DensityKind,
   lng: number,
   lat: number,
 ): {
-  kind: "sighting" | "quake" | "farm" | "plant";
+  kind: "sighting" | "quake" | "farm" | "plant" | "bug";
   title: string;
   detail: string;
   source: string;
@@ -235,6 +235,39 @@ export function densityObject(
         { label: "Layer", value: "Plants" },
         { label: "Readout", value: "Heat cell · vegetation" },
         { label: "Taxa", value: "Plantae · trees · crops · NDVI" },
+        { label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` },
+      ],
+      lng,
+      lat,
+    };
+  }
+  if (kind === "ndvi") {
+    return {
+      kind: "plant",
+      title: "NDVI greenness",
+      detail:
+        "NASA MODIS 8-day Normalized Difference Vegetation Index. Live plants bounce near-infrared; pavement and rock do not. Bright green is dense canopy. This is structure, not a tint and not a country.",
+      source: "NASA GIBS MODIS Terra NDVI 8-day",
+      layer: "Plants",
+      facts: [
+        { label: "Layer", value: "Plants" },
+        { label: "Metric", value: "NDVI (NIR − red) / (NIR + red)" },
+        { label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` },
+      ],
+      lng,
+      lat,
+    };
+  }
+  if (kind === "bugs") {
+    return {
+      kind: "bug",
+      title: "Insect density",
+      detail: "GBIF Insecta occurrence heat. Named beetles, bees, and the rest load next to the cell.",
+      source: "GBIF occurrence density (Insecta)",
+      layer: "Bugs",
+      facts: [
+        { label: "Layer", value: "Bugs" },
+        { label: "Taxa", value: "Insecta" },
         { label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` },
       ],
       lng,

@@ -46,22 +46,34 @@ answer without an API key and are wired into perception:
 | --- | --- | --- |
 | Imagery | NASA GIBS Blue Marble + Esri World Imagery | Base |
 | Greenness | NASA GIBS MODIS Terra NDVI 8-day | Plants |
-| Occurrences | GBIF density + occurrence search | Wild, Plants, Domestic |
+| Elevation | USGS 3DEP EPQS (US point height) + Mapzen/Nextzen terrarium DEM (hills in walk) | Ground, walk |
+| Geology | Macrostrat map units (lithology + age) | Ground |
+| Soil | ISRIC SoilGrids sand/clay/silt 0–5 cm | Ground |
+| Ditches / hydro | OSM waterway (ditch, drain, stream, canal) + OpenMapTiles water | Ground, Plants |
+| Occurrences | GBIF density + occurrence search | Wild, Plants, Domestic, Bugs |
 | Citizen science | iNaturalist Plantae observations | Plants |
 | Land cover | OSM OpenMapTiles landuse / landcover / park / water | Zoning, Plants |
-| Trees / woods | OSM Overpass `natural=tree/wood`, forest, orchard, vineyard, garden, protected_area | Plants |
-| Elevation | USGS 3DEP EPQS (US) | IoT look-at node |
-| Atmosphere | AviationWeather METAR, Open-Meteo, Open-Meteo Air Quality (US AQI / PM2.5) | IoT |
+| Trees / woods | OSM Overpass trees/woods/orchards; fill-extrusion canopy + stems in walk | Plants |
+| Atmosphere | AviationWeather METAR, Open-Meteo, Open-Meteo Air Quality | IoT |
 | Seismic | USGS earthquakes | Quakes |
 | Weather raster | RainViewer | Radar |
 | Hazards | NASA EONET, NWS alerts | Events, Alerts |
 | Movement | GTFS-RT, ADS-B, Amtrak/VIA | Transit, Flights, Rail |
-| Lots | Regrid US parcels, OSM buildings, Nominatim | Plots |
+| Lots / buildings | Regrid US parcels, OSM building extrusions, Nominatim | Plots, walk |
 | Trails | Waymarked Trails hiking / riding | Hiking, Domestic |
 
-Ask `what's growing here` to assemble the plant GIS. Zoning then coordinates:
-wildlife clusters on cover, transit avoids sensitive vegetation, a commercial
-polygon full of native plants proposes a reclass.
+## USGS elevation
+
+There is no free worldwide 3DEP XYZ terrain-RGB. What we can actually drape:
+
+- **USGS 3DEP EPQS** — a JSON height at the look-at (meters). Wired into IoT and Ground.
+- **Mapzen/Nextzen terrarium DEM** — RGB-encoded tiles MapLibre can inflate. Walk mode leaves the globe, sits on this DEM, and exaggerates relief so ditches and mesas read as ground, not a texture.
+
+## NDVI (greenness)
+
+NDVI is `(near-infrared − red) / (near-infrared + red)`. Live canopy reflects NIR strongly, so dense plants read bright/green on the NASA MODIS 8-day composite; pavement, water, and bare rock read dark. It is a **structure metric**, not a pretty tint. Click the plants heat or ask `what's growing here`.
+
+Ask `what rocks are here`, `what bugs are here`, `what's growing here`, or `walk this street`. Walk stands buildings, forest canopy, and individual tree stems up on the DEM.
 
 ## OpenStreetMap stack
 

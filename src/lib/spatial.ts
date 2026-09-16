@@ -35,3 +35,27 @@ export function destination(
 export function wrapBearing(deg: number): number {
   return ((deg % 360) + 360) % 360;
 }
+
+/** Tiny polygon around a point — tree stems, ditch posts, rock markers. */
+export function stemPolygon(
+  lng: number,
+  lat: number,
+  radiusM: number,
+  properties: Record<string, string | number | boolean | null> = {},
+  sides = 10,
+): {
+  type: "Feature";
+  geometry: { type: "Polygon"; coordinates: number[][][] };
+  properties: Record<string, string | number | boolean | null>;
+} {
+  const ring: number[][] = [];
+  for (let i = 0; i <= sides; i++) {
+    const p = destination(lng, lat, (i / sides) * 360, radiusM);
+    ring.push([p.lng, p.lat]);
+  }
+  return {
+    type: "Feature",
+    geometry: { type: "Polygon", coordinates: [ring] },
+    properties,
+  };
+}

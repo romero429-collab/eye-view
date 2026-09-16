@@ -79,8 +79,13 @@ export function coordinateToggle(state: OverlayState, id: OverlayId): OverlaySta
     next.zoning = true;
     next.metric = false;
   }
-  if (id === "wildlife" || id === "livestock" || id === "plants" || id === "trails") next.zoning = true;
+  if (id === "wildlife" || id === "livestock" || id === "plants" || id === "trails" || id === "bugs") next.zoning = true;
   if (id === "plots") next.zoning = true;
+  if (id === "ground") {
+    next.plants = true;
+    next.zoning = true;
+    next.metric = false;
+  }
   if (id === "events" || id === "alerts" || id === "iot") next.zoning = true;
   if (id === "iot") next.metric = false;
   if (id === "zoning" || id === "wildlife" || id === "plants" || id === "quakes") next.metric = false;

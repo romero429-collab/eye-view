@@ -9,6 +9,8 @@ export type OverlayId =
   | "rail"
   | "plots"
   | "zoning"
+  | "ground"
+  | "bugs"
   | "health"
   | "radar"
   | "quakes"
@@ -102,6 +104,20 @@ export const OVERLAYS: OverlayDef[] = [
     group: "map",
   },
   {
+    id: "ground",
+    label: "Ground",
+    blurb: "Elevation, rocks, ditches, soil",
+    live: true,
+    group: "map",
+  },
+  {
+    id: "bugs",
+    label: "Bugs",
+    blurb: "Insects as occurrence GIS",
+    live: true,
+    group: "animals",
+  },
+  {
     id: "health",
     label: "Health",
     blurb: "Sickness trends by country",
@@ -170,6 +186,8 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   rail: false,
   plots: false,
   zoning: false,
+  ground: false,
+  bugs: false,
   health: false,
   radar: false,
   quakes: false,
@@ -204,12 +222,15 @@ export const TILES = {
   gbifPlants:
     "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=6&bin=hex&hexPerTile=22&style=green.poly",
   ndvi: gibsNdviTileUrl(),
+  terrarium: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+  gbifBugs:
+    "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=216&bin=hex&hexPerTile=22&style=classic.poly",
   parcels:
     "https://tiles.arcgis.com/tiles/KzeiCaQsMoeCfoCq/arcgis/rest/services/Regrid_Nationwide_Parcel_Boundaries_v1/MapServer/tile/{z}/{y}/{x}",
 } as const;
 
 export const TILE_ATTRIBUTION =
-  "NASA GIBS NDVI, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, USGS, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Waymarked Trails, Open-Meteo, disease.sh";
+  "NASA GIBS NDVI, Mapzen/USGS elevation, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Macrostrat, SoilGrids, Waymarked Trails, Open-Meteo, disease.sh";
 
 export {
   COVER_CLASS_FILTER,

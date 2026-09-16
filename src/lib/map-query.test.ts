@@ -42,6 +42,8 @@ describe("parseMapQuery", () => {
     assert.equal(intent.walk, true);
     assert.ok(intent.overlays.includes("streets"));
     assert.ok(intent.overlays.includes("plots"));
+    assert.ok(intent.overlays.includes("plants"));
+    assert.ok(intent.overlays.includes("ground"));
   });
 
   it("treats this zone as the look-at, not a named district class", () => {
@@ -75,6 +77,18 @@ describe("parseMapQuery", () => {
     assert.equal(intent.here, true);
     assert.ok(intent.overlays.includes("plants"));
     assert.ok(intent.overlays.includes("zoning"));
+  });
+
+  it("asks for rocks and lithology at the look-at", () => {
+    const intent = parseMapQuery("what rocks are here");
+    assert.equal(intent.here, true);
+    assert.ok(intent.overlays.includes("ground"));
+  });
+
+  it("asks for insects as a taxon, not scenery", () => {
+    const intent = parseMapQuery("what bugs are here");
+    assert.equal(intent.here, true);
+    assert.ok(intent.overlays.includes("bugs"));
   });
 
   it("splits the district under the look-at", () => {

@@ -2,9 +2,11 @@ import {
   Activity,
   Beef,
   Bird,
+  Bug,
   Bus,
   CloudRain,
   Fence,
+  Gem,
   Grid2x2,
   HeartPulse,
   House,
@@ -79,6 +81,16 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
     usage:
       "OSM land-use (residential, commercial, industrial, civic, recreation, construction, quarry/landfill) plus landcover (wood, grass, farmland, pasture) via OpenFreeMap. Walk or ask to mutate a district: the look-at commits immediately; neighbors queue as dashed blocks and stay independent until you confirm. Country metric fades so zone color is the fill.",
   },
+  ground: {
+    icon: Gem,
+    usage:
+      "Elevation you can walk: USGS 3DEP at the look-at, Mapzen terrarium DEM for hills. Macrostrat lithology, SoilGrids texture, OSM ditches and rock. Ask what rocks or ditches are here.",
+  },
+  bugs: {
+    icon: Bug,
+    usage:
+      "GBIF Insecta density and named occurrences. Ask what bugs are here — same heat language as wildlife, different taxon.",
+  },
   health: {
     icon: HeartPulse,
     usage:
@@ -126,6 +138,9 @@ export const OBJECT_META: Record<MapObjectKind, LayerMeta> = {
   trail: { icon: PawPrint, usage: "A mapped corridor or drive." },
   sighting: { icon: PawPrint, usage: "A GBIF occurrence record." },
   plant: { icon: Leaf, usage: "A named plant occurrence — tree, shrub, or crop." },
+  bug: { icon: Bug, usage: "A GBIF insect occurrence." },
+  rock: { icon: Gem, usage: "Bedrock, lithology, or OSM rock at the look-at." },
+  ditch: { icon: Gem, usage: "An OSM ditch, drain, or stream." },
   rail: LAYER_META.rail,
   fence: { icon: Fence, usage: "OSM barrier=fence, often around pasture." },
   farm: { icon: Beef, usage: "OSM landuse=meadow/farmyard/animal_keeping." },

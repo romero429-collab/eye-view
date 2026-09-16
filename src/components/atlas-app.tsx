@@ -522,7 +522,7 @@ export function AtlasApp() {
                   {overlays.metric && !overlays.zoning && !overlays.wildlife && !overlays.plants && !overlays.quakes ? (
                     <MapLegend metric={metric} stops={scale.stops} />
                   ) : null}
-                  {overlays.zoning || overlays.wildlife || overlays.quakes || overlays.livestock || overlays.plants || overlays.transit ? (
+                  {overlays.zoning || overlays.wildlife || overlays.quakes || overlays.livestock || overlays.plants || overlays.transit || overlays.bugs || overlays.ground ? (
                     <OverlayKey
                       zoning={overlays.zoning && !tooHigh}
                       wildlife={overlays.wildlife}
@@ -530,6 +530,7 @@ export function AtlasApp() {
                       livestock={overlays.livestock}
                       plants={overlays.plants}
                       transit={overlays.transit}
+                      bugs={overlays.bugs}
                     />
                   ) : null}
                 </>

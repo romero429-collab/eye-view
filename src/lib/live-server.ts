@@ -17,7 +17,9 @@ export type LiveKind =
   | "zoning"
   | "lookup"
   | "geocode"
-  | "iot";
+  | "iot"
+  | "ground"
+  | "bugs";
 
 export type LiveQuery = {
   kind: LiveKind;
@@ -1320,6 +1322,122 @@ async function geocodePlaces(q: LiveQuery): Promise<FeatureCollection> {
   return { type: "FeatureCollection", features };
 }
 
+type MacroUnit = {
+  name?: string;
+  lith?: string;
+  descrip?: string;
+  comments?: string;
+  color?: string;
+  t_int_name?: string;
+  b_int_name?: string;
+  best_int_name?: string;
+  t_age?: number;
+  b_age?: number;
+};
+
+type SoilVal = { properties?: { layers?: Array<{ name?: string; depths?: Array<{ values?: { mean?: number | null } }> }> } };
+
+async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  const lat = q.lat ?? (q.south != null && q.north != null ? (q.south + q.north) / 2 : null);
+  const lng = q.lng ?? (q.west != null && q.east != null ? (q.west + q.east) / 2 : null);
+  if (lat == null || lng == null) return empty();
+  const [macro, soil, elev, osm] = await Promise.all([
+    fetchJson(
+      `https://macrostrat.org/api/v2/geologic_units/map?lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}`,
+      8000,
+    ),
+    fetchJson(
+      `https://rest.isric.org/soilgrids/v2.0/properties/query?lon=${lng.toFixed(4)}&lat=${lat.toFixed(4)}&property=sand&property=clay&property=silt&depth=0-5cm&value=mean`,
+      8000,
+    ),
+    fetchJson(
+      `https://epqs.nationalmap.gov/v1/json?x=${lng.toFixed(5)}&y=${lat.toFixed(5)}&wkid=4326&units=Meters`,
+      6000,
+    ),
+    osmGroundFeatures(q),
+  ]);
+  const features: Feature[] = [...osm];
+  const units = ((macro as { success?: { data?: MacroUnit[] } } | null)?.success?.data ?? []).slice(0, 3);
+  const elevM = Number((elev as { value?: string | number } | null)?.value);
+  const layers = (soil as SoilVal | null)?.properties?.layers ?? [];
+  const soilBits: Array<{ label: string; value: string }> = [];
+  for (const layer of layers) {
+    const mean = layer.depths?.[0]?.values?.mean;
+    if (layer.name && mean != null && Number.isFinite(mean)) {
+      soilBits.push({ label: layer.name, value: `${Math.round(mean)}` });
+    }
+  }
+  if (units[0] || Number.isFinite(elevM) || soilBits.length) {
+    const top = units[0];
+    const title = top?.name || "Ground at look-at";
+    const lith = top?.lith || "unspecified lithology";
+    features.unshift(
+      point(lng, lat, {
+        kind: "rock",
+        title,
+        detail: [lith, top?.best_int_name || top?.t_int_name, Number.isFinite(elevM) ? `${Math.round(elevM)} m` : null]
+          .filter(Boolean)
+          .join(" · "),
+        source: "Macrostrat · USGS 3DEP · SoilGrids",
+        elev: Number.isFinite(elevM) ? elevM : null,
+        facts: JSON.stringify(
+          [
+            { label: "Layer", value: "Ground" },
+            top?.lith ? { label: "Lithology", value: top.lith } : null,
+            top?.best_int_name ? { label: "Age", value: top.best_int_name } : null,
+            top?.descrip ? { label: "Note", value: String(top.descrip).slice(0, 140) } : null,
+            Number.isFinite(elevM) ? { label: "Elev m", value: String(Math.round(elevM)) } : null,
+            ...soilBits.map((b) => ({ label: `Soil ${b.label}`, value: b.value })),
+            { label: "DEM", value: "USGS 3DEP + Mapzen terrarium" },
+          ].filter(Boolean),
+        ),
+      }),
+    );
+  }
+  return { type: "FeatureCollection", features };
+}
+
+async function osmGroundFeatures(q: LiveQuery): Promise<Feature[]> {
+  if (q.west == null || q.south == null || q.east == null || q.north == null) return [];
+  if ((q.zoom ?? 0) < 12) return [];
+  const span = Math.abs(q.east - q.west) * Math.abs(q.north - q.south);
+  if (span > 3) return [];
+  const bbox = `${q.south.toFixed(4)},${q.west.toFixed(4)},${q.north.toFixed(4)},${q.east.toFixed(4)}`;
+  const body = `[out:json][timeout:16];(way["waterway"~"^(ditch|drain|stream|canal)$"](${bbox});node["natural"~"^(rock|stone|bare_rock|scree|cliff)$"](${bbox});way["natural"~"^(bare_rock|scree|cliff)$"](${bbox}););out center 120;`;
+  const elements = await overpassQuery(body);
+  const features: Feature[] = [];
+  for (const el of elements) {
+    const tags = el.tags ?? {};
+    const lat = el.lat ?? el.geometry?.[0]?.lat;
+    const lon = el.lon ?? el.geometry?.[0]?.lon;
+    if (lat == null || lon == null) continue;
+    const ditch = Boolean(tags.waterway);
+    const title = tags.name || (tags.waterway || tags.natural || "ground").replace(/_/g, " ");
+    features.push(
+      point(lon, lat, {
+        kind: ditch ? "ditch" : "rock",
+        title,
+        detail: [tags.waterway, tags.natural, tags.surface, tags.material].filter(Boolean).join(" · "),
+        source: "OpenStreetMap Overpass",
+        facts: JSON.stringify(
+          [
+            { label: "Layer", value: "Ground" },
+            { label: "GIS", value: ditch ? "OSM waterway" : "OSM natural" },
+            tags.surface ? { label: "Surface", value: tags.surface } : null,
+            tags.material ? { label: "Material", value: tags.material } : null,
+          ].filter(Boolean),
+        ),
+      }),
+    );
+  }
+  return features;
+}
+
+async function bugFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  const feats = await gbifOccurrences(216, q, 60, { kind: "bug", fallback: "Insect" });
+  return { type: "FeatureCollection", features: feats };
+}
+
 export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
   switch (q.kind) {
     case "transit":
@@ -1350,6 +1468,10 @@ export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
       return geocodePlaces(q);
     case "iot":
       return iotFeatures(q);
+    case "ground":
+      return groundFeatures(q);
+    case "bugs":
+      return bugFeatures(q);
     default:
       return empty();
   }

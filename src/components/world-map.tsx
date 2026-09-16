@@ -52,6 +52,7 @@ import {
 } from "@/lib/basemaps";
 import { cn } from "@/lib/utils";
 import { destination, wrapBearing } from "@/lib/spatial";
+import { stemsFromPlants, terrainExaggeration } from "@/lib/ground";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
   densityObject,
@@ -259,6 +260,29 @@ function buildStyle(): StyleSpecification {
         tileSize: 256,
         maxzoom: 9,
         attribution: "NASA GIBS MODIS NDVI",
+      },
+      gbifBugs: {
+        type: "raster",
+        tiles: [TILES.gbifBugs],
+        tileSize: 256,
+        maxzoom: 16,
+        attribution: "GBIF",
+      },
+      bugsLive: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      geology: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      ditches: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      trees3d: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
       },
       health: {
         type: "geojson",
@@ -569,7 +593,7 @@ function buildStyle(): StyleSpecification {
         type: "fill-extrusion",
         source: "openmaptiles",
         "source-layer": "building",
-        minzoom: 14,
+        minzoom: 13,
         layout: { visibility: "none" },
         paint: {
           "fill-extrusion-color": "#6d7c82",
@@ -793,6 +817,41 @@ function buildStyle(): StyleSpecification {
         },
       },
       {
+        id: "gbifBugs",
+        type: "raster",
+        source: "gbifBugs",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.52 },
+      },
+      {
+        id: "bugs-heat",
+        type: "heatmap",
+        source: "bugsLive",
+        maxzoom: 16,
+        layout: { visibility: "none" },
+        paint: {
+          "heatmap-weight": 1,
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 4, 0.45, 12, 1.4],
+          "heatmap-color": heatmapColorExpr("wildlife"),
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 4, 10, 12, 24],
+          "heatmap-opacity": 0.62,
+        },
+      },
+      {
+        id: "bugsLive",
+        type: "circle",
+        source: "bugsLive",
+        minzoom: 8,
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 4, 14, 7],
+          "circle-color": "#c45c2a",
+          "circle-opacity": 0.88,
+          "circle-stroke-color": "#e7eaed",
+          "circle-stroke-width": 0.7,
+        },
+      },
+      {
         id: "otm-plants",
         type: "fill",
         source: "openmaptiles",
@@ -827,6 +886,80 @@ function buildStyle(): StyleSpecification {
         paint: {
           "fill-color": "#3d7a6e",
           "fill-opacity": 0.32,
+        },
+      },
+      {
+        id: "otm-canopy-3d",
+        type: "fill-extrusion",
+        source: "openmaptiles",
+        "source-layer": "landcover",
+        minzoom: 14,
+        filter: ["match", ["get", "class"], ["wood"], true, false],
+        layout: { visibility: "none" },
+        paint: {
+          "fill-extrusion-color": "#2a5a3c",
+          "fill-extrusion-height": 14,
+          "fill-extrusion-opacity": 0.62,
+        },
+      },
+      {
+        id: "trees3d",
+        type: "fill-extrusion",
+        source: "trees3d",
+        minzoom: 15,
+        layout: { visibility: "none" },
+        paint: {
+          "fill-extrusion-color": "#1e4a32",
+          "fill-extrusion-height": ["coalesce", ["get", "height"], 11],
+          "fill-extrusion-opacity": 0.82,
+        },
+      },
+      {
+        id: "otm-waterway",
+        type: "line",
+        source: "openmaptiles",
+        "source-layer": "waterway",
+        minzoom: 12,
+        layout: { visibility: "none" },
+        paint: {
+          "line-color": "#5aa8a0",
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            12,
+            0.8,
+            17,
+            2.4,
+          ],
+          "line-opacity": 0.85,
+        },
+      },
+      {
+        id: "ditches",
+        type: "circle",
+        source: "ditches",
+        minzoom: 12,
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": 4,
+          "circle-color": "#5aa8a0",
+          "circle-stroke-color": "#e7eaed",
+          "circle-stroke-width": 0.7,
+        },
+      },
+      {
+        id: "geology",
+        type: "circle",
+        source: "geology",
+        minzoom: 5,
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 6, 14, 10],
+          "circle-color": "#c4b89a",
+          "circle-opacity": 0.9,
+          "circle-stroke-color": "#e7eaed",
+          "circle-stroke-width": 0.8,
         },
       },
       {
@@ -1121,7 +1254,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "otm-farm",
     "osm-fill",
   ],
-  plants: ["ndvi", "gbifPlants", "plants-heat", "plantsLive", "otm-plants", "otm-water"],
+  plants: ["ndvi", "gbifPlants", "plants-heat", "plantsLive", "otm-plants", "otm-water", "otm-canopy-3d", "trees3d"],
   rail: ["otm-rail", "otm-rail-hatch", "otm-station", "osm-line", "osm-point"],
   plots: [
     "parcels",
@@ -1145,6 +1278,8 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "memory-line",
     "memory-queue",
   ],
+  ground: ["geology", "ditches", "otm-waterway"],
+  bugs: ["gbifBugs", "bugs-heat", "bugsLive"],
   health: ["health"],
   radar: ["radar"],
   quakes: ["quakes-heat", "quakes"],
@@ -1161,6 +1296,7 @@ const POINT_HIT_LAYERS = [
   "wildlifeLive",
   "livestockLive",
   "plantsLive",
+  "bugsLive",
   "health",
   "plots-point",
   "otm-housenumber",
@@ -1171,6 +1307,8 @@ const POINT_HIT_LAYERS = [
   "alerts",
   "events",
   "iot",
+  "geology",
+  "ditches",
 ];
 
 const AREA_HIT_LAYERS = [
@@ -1190,6 +1328,9 @@ const AREA_HIT_LAYERS = [
   "otm-farm",
   "otm-plants",
   "otm-water",
+  "otm-canopy-3d",
+  "trees3d",
+  "otm-waterway",
   "wildlife",
   "livestock",
 ];
@@ -1240,7 +1381,9 @@ function closestFeature(
 }
 
 function layerName(layerId: string, kind: MapObjectKind): string {
-  if (layerId.includes("plants") || kind === "plant" || layerId === "otm-water" || layerId === "ndvi") return "Plants";
+  if (layerId.includes("plants") || kind === "plant" || layerId === "otm-water" || layerId === "ndvi" || layerId === "trees3d" || layerId === "otm-canopy-3d") return "Plants";
+  if (layerId.includes("bugs") || kind === "bug") return "Bugs";
+  if (layerId === "geology" || layerId === "ditches" || layerId === "otm-waterway" || kind === "rock" || kind === "ditch") return "Ground";
   if (layerId === "iot" || kind === "sensor") return "IoT";
   if (layerId.includes("wildlife") || kind === "sighting") return "Wild";
   if (layerId.includes("livestock") || kind === "farm" || kind === "fence") return "Domestic";
@@ -1283,6 +1426,9 @@ function featureToObject(
       "health",
       "sighting",
       "plant",
+      "bug",
+      "rock",
+      "ditch",
       "trail",
       "transit",
       "flight",
@@ -1302,8 +1448,14 @@ function featureToObject(
           ? "country"
           : layerId === "otm-farm"
             ? "farm"
-            : layerId === "otm-plants" || layerId === "otm-water" || layerId.includes("plants")
+            : layerId === "otm-plants" || layerId === "otm-water" || layerId === "otm-canopy-3d" || layerId === "trees3d" || layerId.includes("plants") || layerId === "ndvi"
               ? "plant"
+            : layerId.includes("bugs")
+              ? "bug"
+            : layerId === "geology"
+              ? "rock"
+            : layerId === "ditches" || layerId === "otm-waterway"
+              ? "ditch"
             : layerId === "iot"
               ? "sensor"
             : layerId === "otm-housenumber"
@@ -1538,7 +1690,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       [0, 0],
       [map.getCanvas().width, map.getCanvas().height],
     ];
-    return {
+    const next = {
       lng: center.lng,
       lat: center.lat,
       zoom: map.getZoom(),
@@ -1549,16 +1701,23 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       quakes: countLayer("quakes"),
       transit: countLayer("transit"),
       wildlife: countLayer("wildlifeLive") + countLayer("wildlife"),
-      plants: countLayer("plantsLive") + countLayer("otm-plants"),
+      plants: countLayer("plantsLive") + countLayer("otm-plants") + countLayer("trees3d"),
       events: countLayer("events"),
       alerts: countLayer("alerts"),
       sensors: countLayer("iot", view),
       precip: maxProp("iot", "precip", view),
       temp: maxProp("iot", "temp", view),
       wind: maxProp("iot", "wind", view),
-      elev: maxProp("iot", "elev", view),
+      elev: maxProp("iot", "elev", view) || maxProp("geology", "elev", view),
       aqi: maxProp("iot", "aqi", view),
     };
+    try {
+      const te = map.queryTerrainElevation(center);
+      if (typeof te === "number" && Number.isFinite(te)) next.elev = te;
+    } catch {
+      /* terrain optional */
+    }
+    return next;
   };
 
   useImperativeHandle(ref, () => ({
@@ -1736,6 +1895,20 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         } catch {
           /* sky is optional */
         }
+        try {
+          if (!map.getSource("terrain")) {
+            map.addSource("terrain", {
+              type: "raster-dem",
+              tiles: [TILES.terrarium],
+              tileSize: 256,
+              encoding: "terrarium",
+              maxzoom: 15,
+              attribution: "Mapzen/Nextzen, USGS 3DEP",
+            });
+          }
+        } catch {
+          /* DEM optional */
+        }
         map.setRenderWorldCopies(false);
         map.resize();
         emitView();
@@ -1799,7 +1972,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         const inspectCountryHere = () => {
           pickRef.current?.(null);
           const groundMode =
-            ov.zoning || ov.wildlife || ov.plants || ov.plots || ov.livestock || ov.quakes || zoom >= 5;
+            ov.zoning || ov.wildlife || ov.plants || ov.plots || ov.livestock || ov.quakes || ov.ground || ov.bugs || zoom >= 5;
           if (!ground || groundMode) {
             onSelect(null);
             return;
@@ -1854,7 +2027,9 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           return;
         }
 
-        const densityKind = ov.plants
+        const densityKind = ov.bugs
+          ? "bugs"
+          : ov.plants
           ? "plants"
           : ov.wildlife
           ? "wildlife"
@@ -2049,6 +2224,11 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       bindLiveLayer("wildlifeLive", "sighting");
       bindLiveLayer("plantsLive", "plant");
       bindLiveLayer("otm-plants", "plant");
+      bindLiveLayer("trees3d", "plant");
+      bindLiveLayer("bugsLive", "bug");
+      bindLiveLayer("geology", "rock");
+      bindLiveLayer("ditches", "ditch");
+      bindLiveLayer("otm-waterway", "ditch");
       bindLiveLayer("livestockLive", "sighting");
       bindLiveLayer("health", "health");
       bindLiveLayer("osm-point", "rail");
@@ -2091,6 +2271,15 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       map.setProjection({ type: globe ? "globe" : "mercator" });
     } catch {
       /* projection swap is best-effort */
+    }
+    try {
+      if (globe || !map.getSource("terrain")) {
+        map.setTerrain(null);
+      } else {
+        map.setTerrain({ source: "terrain", exaggeration: terrainExaggeration(walking) });
+      }
+    } catch {
+      /* globe and terrain cannot always combine */
     }
   }, [globe, walking, ready]);
 
@@ -2264,6 +2453,19 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         walking || overlays.plots ? "visible" : "none",
       );
     }
+    const walkStructure = walking || overlays.plants;
+    for (const id of ["otm-canopy-3d", "trees3d"]) {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", walkStructure ? "visible" : "none");
+      }
+    }
+    if (map.getLayer("otm-waterway")) {
+      map.setLayoutProperty(
+        "otm-waterway",
+        "visibility",
+        walking || overlays.ground || overlays.plants ? "visible" : "none",
+      );
+    }
     const dim = radarDimFactor(overlays);
     if (map.getLayer("transit")) {
       map.setPaintProperty("transit", "circle-opacity", 0.92 * dim);
@@ -2397,8 +2599,10 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       "plants",
       "health",
       "iot",
+      "ground",
+      "bugs",
     ] as const;
-    const active = kinds.filter((kind) => overlays[kind]);
+    const active = kinds.filter((kind) => overlays[kind] || (walking && (kind === "plants" || kind === "ground")));
     if (active.length === 0 && !overlays.rail && !overlays.livestock && !overlays.plots && !overlays.zoning)
       return;
     let cancelled = false;
@@ -2409,12 +2613,16 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           ? "livestockLive"
           : kind === "plants"
             ? "plantsLive"
-            : kind;
+            : kind === "bugs"
+              ? "bugsLive"
+              : kind === "ground"
+                ? "geology"
+                : kind;
 
     const pull = async () => {
       const bounds = map.getBounds();
       const zoom = map.getZoom();
-      const bbox = `west=${bounds.getWest()}&south=${bounds.getSouth()}&east=${bounds.getEast()}&north=${bounds.getNorth()}&zoom=${zoom.toFixed(2)}`;
+      const bbox = `west=${bounds.getWest()}&south=${bounds.getSouth()}&east=${bounds.getEast()}&north=${bounds.getNorth()}&zoom=${zoom.toFixed(2)}&lat=${map.getCenter().lat.toFixed(5)}&lng=${map.getCenter().lng.toFixed(5)}`;
       const notes: string[] = [];
       await Promise.all(
         active.map(async (kind) => {
@@ -2440,6 +2648,26 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               (map.getSource("transit") as GeoJSONSource | undefined)?.setData(stamped);
               (map.getSource("transitDetour") as GeoJSONSource | undefined)?.setData(detourCollection(stamped));
               notes.push(`${data.features.length} ${kind} · ${sense.mood}`);
+              return;
+            }
+            if (kind === "plants") {
+              (map.getSource("plantsLive") as GeoJSONSource | undefined)?.setData(data);
+              (map.getSource("trees3d") as GeoJSONSource | undefined)?.setData(stemsFromPlants(data));
+              notes.push(`${data.count ?? data.features.length} plants`);
+              return;
+            }
+            if (kind === "ground") {
+              const ditchFeats = data.features.filter((f) => f.properties?.kind === "ditch");
+              const rockFeats = data.features.filter((f) => f.properties?.kind !== "ditch");
+              (map.getSource("geology") as GeoJSONSource | undefined)?.setData({
+                type: "FeatureCollection",
+                features: rockFeats,
+              });
+              (map.getSource("ditches") as GeoJSONSource | undefined)?.setData({
+                type: "FeatureCollection",
+                features: ditchFeats,
+              });
+              notes.push(`${data.features.length} ground`);
               return;
             }
             (map.getSource(sourceFor(kind)) as GeoJSONSource | undefined)?.setData(
@@ -2538,11 +2766,14 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     overlays.plants,
     overlays.health,
     overlays.iot,
+    overlays.ground,
+    overlays.bugs,
     overlays.rail,
     overlays.plots,
     overlays.zoning,
     overlays.quakes,
     patches,
+    walking,
     ready,
   ]);
 
