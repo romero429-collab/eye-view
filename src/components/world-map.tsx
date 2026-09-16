@@ -220,6 +220,10 @@ function buildStyle(): StyleSpecification {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
+      plantsLive: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
       gbifWild: {
         type: "raster",
         tiles: [TILES.gbifWild],
@@ -230,6 +234,13 @@ function buildStyle(): StyleSpecification {
       gbifStock: {
         type: "raster",
         tiles: [TILES.gbifStock],
+        tileSize: 256,
+        maxzoom: 16,
+        attribution: "GBIF",
+      },
+      gbifPlants: {
+        type: "raster",
+        tiles: [TILES.gbifPlants],
         tileSize: 256,
         maxzoom: 16,
         attribution: "GBIF",
@@ -708,6 +719,66 @@ function buildStyle(): StyleSpecification {
         },
       },
       {
+        id: "gbifPlants",
+        type: "raster",
+        source: "gbifPlants",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.58 },
+      },
+      {
+        id: "plants-heat",
+        type: "heatmap",
+        source: "plantsLive",
+        maxzoom: 16,
+        layout: { visibility: "none" },
+        paint: {
+          "heatmap-weight": 1,
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 4, 0.5, 12, 1.5],
+          "heatmap-color": heatmapColorExpr("plants"),
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 4, 12, 12, 26],
+          "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0.5, 14, 0.72],
+        },
+      },
+      {
+        id: "plantsLive",
+        type: "circle",
+        source: "plantsLive",
+        minzoom: 8,
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 5, 14, 8],
+          "circle-color": "#3d9e72",
+          "circle-opacity": 0.9,
+          "circle-stroke-color": "#e7eaed",
+          "circle-stroke-width": 0.8,
+        },
+      },
+      {
+        id: "otm-plants",
+        type: "fill",
+        source: "openmaptiles",
+        "source-layer": "landcover",
+        minzoom: 7,
+        filter: ["match", ["get", "class"], ["wood", "grass", "farmland", "wetland"], true, false],
+        layout: { visibility: "none" },
+        paint: {
+          "fill-color": [
+            "match",
+            ["get", "class"],
+            "wood",
+            "#2f6b45",
+            "grass",
+            "#5a8f4a",
+            "farmland",
+            "#7a9a3a",
+            "wetland",
+            "#3d6b5c",
+            "#3d9e72",
+          ],
+          "fill-opacity": 0.38,
+        },
+      },
+      {
         id: "otm-farm",
         type: "fill",
         source: "openmaptiles",
@@ -960,6 +1031,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "otm-farm",
     "osm-fill",
   ],
+  plants: ["gbifPlants", "plants-heat", "plantsLive", "otm-plants"],
   rail: ["otm-rail", "otm-rail-hatch", "otm-station", "osm-line", "osm-point"],
   plots: [
     "parcels",
@@ -996,6 +1068,7 @@ const POINT_HIT_LAYERS = [
   "flights",
   "wildlifeLive",
   "livestockLive",
+  "plantsLive",
   "health",
   "plots-point",
   "otm-housenumber",
@@ -1022,6 +1095,7 @@ const AREA_HIT_LAYERS = [
   "osm-fill",
   "otm-rail",
   "otm-farm",
+  "otm-plants",
   "wildlife",
   "livestock",
 ];
@@ -1072,6 +1146,7 @@ function closestFeature(
 }
 
 function layerName(layerId: string, kind: MapObjectKind): string {
+  if (layerId.includes("plants") || kind === "plant") return "Plants";
   if (layerId.includes("wildlife") || kind === "sighting") return "Wild";
   if (layerId.includes("livestock") || kind === "farm" || kind === "fence") return "Domestic";
   if (layerId === "quakes" || kind === "quake") return "Quakes";
@@ -1112,6 +1187,7 @@ function featureToObject(
       "farm",
       "health",
       "sighting",
+      "plant",
       "trail",
       "transit",
       "flight",
@@ -1130,6 +1206,8 @@ function featureToObject(
           ? "country"
           : layerId === "otm-farm"
             ? "farm"
+            : layerId === "otm-plants" || layerId.includes("plants")
+              ? "plant"
             : layerId === "otm-housenumber"
               ? "address"
               : layerId.startsWith("otm-building")
@@ -1343,6 +1421,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       quakes: countLayer("quakes"),
       transit: countLayer("transit"),
       wildlife: countLayer("wildlifeLive") + countLayer("wildlife"),
+      plants: countLayer("plantsLive") + countLayer("otm-plants"),
       events: countLayer("events"),
       alerts: countLayer("alerts"),
     };
@@ -1581,7 +1660,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         const inspectCountryHere = () => {
           pickRef.current?.(null);
           const groundMode =
-            ov.zoning || ov.wildlife || ov.plots || ov.livestock || ov.quakes || zoom >= 5;
+            ov.zoning || ov.wildlife || ov.plants || ov.plots || ov.livestock || ov.quakes || zoom >= 5;
           if (!ground || groundMode) {
             onSelect(null);
             return;
@@ -1636,7 +1715,9 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           return;
         }
 
-        const densityKind = ov.wildlife
+        const densityKind = ov.plants
+          ? "plants"
+          : ov.wildlife
           ? "wildlife"
           : ov.livestock
             ? "livestock"
@@ -1699,6 +1780,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           isCoarsePointer() ||
           ov.zoning ||
           ov.wildlife ||
+          ov.plants ||
           ov.livestock ||
           ov.quakes ||
           active.getZoom() >= 6.5;
@@ -1824,6 +1906,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       bindLiveLayer("wildlife", "trail");
       bindLiveLayer("livestock", "trail");
       bindLiveLayer("wildlifeLive", "sighting");
+      bindLiveLayer("plantsLive", "plant");
+      bindLiveLayer("otm-plants", "plant");
       bindLiveLayer("livestockLive", "sighting");
       bindLiveLayer("health", "health");
       bindLiveLayer("osm-point", "rail");
@@ -2049,6 +2133,9 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     if (map.getLayer("wildlifeLive")) {
       map.setPaintProperty("wildlifeLive", "circle-opacity", 0.85 * dim);
     }
+    if (map.getLayer("plantsLive")) {
+      map.setPaintProperty("plantsLive", "circle-opacity", 0.9 * dim);
+    }
     const landuseHit = ZONE_SWATCHES.find((s) => s.id === zoneFilter && s.group === "landuse");
     const coverHit = ZONE_SWATCHES.find((s) => s.id === zoneFilter && s.group === "cover");
     const landuseClasses =
@@ -2071,7 +2158,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       map.setFilter("otm-cover", ["match", ["get", "class"], coverClasses, true, false]);
     }
     const hideMetric =
-      overlays.zoning || overlays.wildlife || overlays.livestock || overlays.quakes;
+      overlays.zoning || overlays.wildlife || overlays.plants || overlays.livestock || overlays.quakes;
     if (map.getLayer("choropleth")) {
       map.setPaintProperty(
         "choropleth",
@@ -2166,6 +2253,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       "events",
       "wildlife",
       "livestock",
+      "plants",
       "health",
     ] as const;
     const active = kinds.filter((kind) => overlays[kind]);
@@ -2177,7 +2265,9 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         ? "wildlifeLive"
         : kind === "livestock"
           ? "livestockLive"
-          : kind;
+          : kind === "plants"
+            ? "plantsLive"
+            : kind;
 
     const pull = async () => {
       const bounds = map.getBounds();
@@ -2286,6 +2376,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     overlays.events,
     overlays.wildlife,
     overlays.livestock,
+    overlays.plants,
     overlays.health,
     overlays.rail,
     overlays.plots,

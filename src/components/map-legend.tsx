@@ -79,15 +79,18 @@ export function OverlayKey({
   wildlife,
   quakes,
   livestock,
+  plants,
 }: {
   zoning: boolean;
   wildlife: boolean;
   quakes: boolean;
   livestock: boolean;
+  plants: boolean;
 }) {
   const ramps: Array<{ id: HeatRampId; title: string }> = [];
   if (wildlife) ramps.push({ id: "wildlife", title: "Wild" });
   if (livestock) ramps.push({ id: "livestock", title: "Domestic" });
+  if (plants) ramps.push({ id: "plants", title: "Plants" });
   if (quakes) ramps.push({ id: "quakes", title: "Quakes" });
   if (!zoning && ramps.length === 0) return null;
   return (

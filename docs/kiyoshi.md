@@ -24,6 +24,7 @@ Rock-solid foundation, then the recursive loop Claude named:
 3. **Coordinates** — look-at is always on the chrome.
 4. **Zone memory** — walk or query to tag / reclass / split / merge. The look-at **commits immediately** into the rule engine. Connected blocks receive a **queued** proposal (one hop). They stay independent until you confirm — a change never silently overwrites the next district.
 5. **Events in districts** — hazards dim and coordinate with the zone, they do not replace it.
+6. **Plants as structure** — vegetation is a queryable overlay (GBIF + OSM cover), not scenery. Wildlife clusters on it; paved commercial with native cover proposes a reclass.
 
 
 ## Long term

@@ -109,7 +109,7 @@ export function LayerPanel({ value, onToggle, liveNote }: LayerPanelProps) {
         onToggle={onToggle}
       />
       <OverlayGroup
-        title="Animal trails"
+        title="Life"
         items={OVERLAYS.filter((item) => item.group === "animals")}
         value={value}
         onToggle={onToggle}

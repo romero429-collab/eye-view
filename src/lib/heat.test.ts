@@ -11,7 +11,7 @@ import {
 
 describe("heat ramps", () => {
   it("keeps wildlife and quake ramps sequential and labeled", () => {
-    for (const id of ["wildlife", "quakes", "livestock", "health"] as const) {
+    for (const id of ["wildlife", "quakes", "livestock", "health", "plants"] as const) {
       const ramp = HEAT_RAMPS[id];
       assert.ok(ramp.length >= 4);
       assert.equal(ramp[0]?.t, 0);
@@ -55,5 +55,13 @@ describe("densityObject", () => {
     assert.match(obj.title, /wildlife/i);
     assert.match(obj.detail, /not a country/i);
     assert.equal(obj.lng, -106.65);
+  });
+
+  it("names a plant heat cell as vegetation, not scenery", () => {
+    const obj = densityObject("plants", -106.65, 35.08);
+    assert.equal(obj.kind, "plant");
+    assert.equal(obj.layer, "Plants");
+    assert.match(obj.title, /plant/i);
+    assert.match(obj.detail, /not scenery/i);
   });
 });

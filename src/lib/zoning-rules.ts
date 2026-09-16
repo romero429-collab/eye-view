@@ -26,6 +26,7 @@ export type SceneSample = {
   quakes: number;
   transit: number;
   wildlife: number;
+  plants?: number;
   events: number;
   alerts: number;
 };
@@ -48,6 +49,8 @@ export type RuleContext = {
 const AVOID_WILDLIFE = new Set(["industrial", "military", "garages", "extractive", "construction"]);
 const PREFER_TRAILS = new Set(["residential", "civic", "cemetery", "park", "wood", "grass", "recreation", "pasture"]);
 const PREFER_STOCK = new Set(["industrial", "pasture", "farmland"]);
+const PAVED = new Set(["commercial", "industrial", "retail", "extractive", "construction", "garages"]);
+const VEGETATED = new Set(["park", "wood", "grass", "farmland", "pasture", "recreation"]);
 
 export function zoneClassOf(raw: string | null | undefined): ZoneClassId {
   if (!raw) return "unknown";
@@ -63,10 +66,10 @@ export function coordinateToggle(state: OverlayState, id: OverlayId): OverlaySta
   const next: OverlayState = { ...state, [id]: !state[id] };
   if (!next[id]) return next;
   if (id === "transit" || id === "rail") next.streets = true;
-  if (id === "wildlife" || id === "livestock" || id === "trails") next.zoning = true;
+  if (id === "wildlife" || id === "livestock" || id === "plants" || id === "trails") next.zoning = true;
   if (id === "plots") next.zoning = true;
   if (id === "events" || id === "alerts") next.zoning = true;
-  if (id === "zoning" || id === "wildlife" || id === "quakes") next.metric = false;
+  if (id === "zoning" || id === "wildlife" || id === "plants" || id === "quakes") next.metric = false;
   return next;
 }
 
@@ -251,6 +254,45 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
       detail: "Wildlife density is read against human trail networks, not instead of them.",
       local: (scene?.wildlife ?? 0) > 0,
     });
+  }
+
+  if (overlays.plants) {
+    const plantCount = scene?.plants ?? 0;
+    if (overlays.wildlife) {
+      hits.push({
+        id: "wild-plants",
+        effect: "prefer",
+        title: plantCount > 0 ? "Wildlife clusters on this vegetation" : "Wildlife follows plant cover",
+        detail: "Animals use trees, shrubs, and crops as structure. Vegetation is the corridor, not scenery.",
+        local: plantCount > 0 || (scene?.wildlife ?? 0) > 0,
+      });
+    }
+    if (PAVED.has(klass)) {
+      hits.push({
+        id: "plants-paved",
+        effect: "avoid",
+        title: plantCount > 0 ? "Native plants on paved zoning" : "Vegetation fights this district",
+        detail: `${labeled} is a poor container for living cover. Confirm a park / wood reclass if the ground is growing.`,
+        local: plantCount > 0,
+      });
+    } else if (VEGETATED.has(klass) || klass === "residential") {
+      hits.push({
+        id: "plants-fit",
+        effect: "prefer",
+        title: "Plants belong in this district",
+        detail: `${labeled} is a vegetated container — trees, shrubs, and crops inform how this zone works.`,
+        local: plantCount > 0,
+      });
+    }
+    if (overlays.transit) {
+      hits.push({
+        id: "plants-transit",
+        effect: "avoid",
+        title: "Transit avoids sensitive vegetation",
+        detail: "Routes detour living cover. Plants constrain the snap, they do not decorate it.",
+        local: plantCount > 0,
+      });
+    }
   }
 
   return hits;

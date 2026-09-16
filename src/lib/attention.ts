@@ -11,6 +11,8 @@ const FLOOR = 0.08;
 
 const HINTS: Record<string, string[]> = {
   wildlife: ["animal", "wild", "terrain", "habitat", "wildlife"],
+  plants: ["plant", "tree", "crop", "vegetation", "growing", "flora"],
+  plant: ["plant", "tree", "crop", "vegetation"],
   sighting: ["animal", "wild", "wildlife"],
   livestock: ["livestock", "cattle", "domestic", "herd"],
   quakes: ["quake", "seismic", "earthquake"],

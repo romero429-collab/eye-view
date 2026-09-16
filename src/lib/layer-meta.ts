@@ -10,6 +10,7 @@ import {
   House,
   LandPlot,
   Layers,
+  Leaf,
   MapPin,
   MapPinHouse,
   Mountain,
@@ -56,6 +57,11 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
     icon: Beef,
     usage:
       "GBIF cattle (Bos taurus) density, historic drives, OSM farmland/grass, highway=bridleway / route=horse, landuse=meadow|farmyard|animal_keeping, barrier=fence when zoomed.",
+  },
+  plants: {
+    icon: Leaf,
+    usage:
+      "GBIF plant density (green heat) plus OSM wood, grass, farmland, wetland. Click a cell for a named tree, shrub, or crop — vegetation is structural, not scenery.",
   },
   rail: {
     icon: TrainFront,
@@ -112,6 +118,7 @@ export const OBJECT_META: Record<MapObjectKind, LayerMeta> = {
   event: LAYER_META.events,
   trail: { icon: PawPrint, usage: "A mapped corridor or drive." },
   sighting: { icon: PawPrint, usage: "A GBIF occurrence record." },
+  plant: { icon: Leaf, usage: "A named plant occurrence — tree, shrub, or crop." },
   rail: LAYER_META.rail,
   fence: { icon: Fence, usage: "OSM barrier=fence, often around pasture." },
   farm: { icon: Beef, usage: "OSM landuse=meadow/farmyard/animal_keeping." },

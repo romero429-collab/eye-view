@@ -300,8 +300,8 @@ export function dismissPatch(patches: ZonePatch[], id: string): ZonePatch[] {
 
 export function absorbLive(
   patches: ZonePatch[],
-  scene: { lng: number; lat: number; zoom: number; zoneClass: string | null; wildlife: number; transit: number; events: number; alerts: number; quakes: number },
-  overlays: { wildlife?: boolean; transit?: boolean; events?: boolean; alerts?: boolean; quakes?: boolean },
+  scene: { lng: number; lat: number; zoom: number; zoneClass: string | null; wildlife: number; plants?: number; transit: number; events: number; alerts: number; quakes: number },
+  overlays: { wildlife?: boolean; plants?: boolean; transit?: boolean; events?: boolean; alerts?: boolean; quakes?: boolean },
 ): ZonePatch[] {
   if (scene.zoom < 8) return patches;
   let next = patches;
@@ -321,6 +321,12 @@ export function absorbLive(
 
   if (overlays.wildlife && scene.wildlife > 0 && klass && AVOID_WILDLIFE.has(klass)) {
     flag("reclass", "park", "Wildlife is using ground tagged industrial — propose park / corridor.");
+  }
+  if (overlays.plants && (scene.plants ?? 0) > 0 && klass && AVOID_WILDLIFE.has(klass)) {
+    flag("reclass", "park", "Living cover on paved zoning — propose park / wood.");
+  }
+  if (overlays.plants && (scene.plants ?? 0) > 0 && (klass === "commercial" || klass === "retail")) {
+    flag("reclass", "park", "Native plants on commercial ground — the district may need reclass.");
   }
   if (overlays.transit && scene.transit > 2 && klass && (klass === "industrial" || klass === "extractive" || klass === "military")) {
     flag("reclass", "commercial", "Transit density does not match this district class.");

@@ -54,6 +54,14 @@ describe("parseMapQuery", () => {
     assert.equal(intent.here, true);
   });
 
+  it("reads vegetation as a queryable layer, not a label", () => {
+    const intent = parseMapQuery("what's growing here");
+    assert.equal(intent.kind, "ask");
+    assert.equal(intent.here, true);
+    assert.ok(intent.overlays.includes("plants"));
+    assert.ok(intent.overlays.includes("zoning"));
+  });
+
   it("splits the district under the look-at", () => {
     const intent = parseMapQuery("split this zone");
     assert.equal(intent.edit, "split");

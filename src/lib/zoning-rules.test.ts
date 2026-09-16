@@ -30,6 +30,10 @@ describe("coordinateToggle", () => {
     assert.equal(withWild.wildlife, true);
     assert.equal(withWild.zoning, true);
     assert.equal(withWild.metric, false);
+    const withPlants = coordinateToggle(DEFAULT_OVERLAYS, "plants");
+    assert.equal(withPlants.plants, true);
+    assert.equal(withPlants.zoning, true);
+    assert.equal(withPlants.metric, false);
   });
 });
 
@@ -162,5 +166,29 @@ describe("evaluateRules", () => {
     });
     assert.ok(hits.some((h) => h.id === "event-zone"));
     assert.ok(hits.some((h) => h.patchId === "z-test"));
+  });
+
+  it("treats plants as structure that can fight paved zoning", () => {
+    const hits = evaluateRules({
+      overlays: { ...DEFAULT_OVERLAYS, plants: true, wildlife: true, zoning: true, transit: true },
+      scene: {
+        lng: -106.65,
+        lat: 35.08,
+        zoom: 14,
+        bearing: 0,
+        pitch: 0,
+        zoneClass: "commercial",
+        zoneLabel: "Commercial",
+        quakes: 0,
+        transit: 1,
+        wildlife: 1,
+        plants: 3,
+        events: 0,
+        alerts: 0,
+      },
+    });
+    assert.ok(hits.some((h) => h.id === "plants-paved" && h.effect === "avoid"));
+    assert.ok(hits.some((h) => h.id === "wild-plants" && h.effect === "prefer"));
+    assert.ok(hits.some((h) => h.id === "plants-transit"));
   });
 });

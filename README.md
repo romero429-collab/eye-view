@@ -23,11 +23,12 @@ Type what you want instead of hunting toggles. Chips under the bar run the same 
 - `terrain for animals here` — wildlife + trails + zoning at the look-at
 - `walk this street` — drops to ground level with 3D buildings
 - `this is residential` — teaches the look-at; a local patch overrides OSM
+- `what's growing here` — plants + zoning. Named trees, shrubs, crops — not a label.
 - `split this zone` — subdivides the district under the crosshair
 
-Walk the street to **Tag / Reclass / Split / Merge**. The block underfoot commits immediately; four adjacent blocks queue as proposals — they stay independent until you confirm. Live wildlife, transit, and events propose reclassifications the same way.
+Walk the street to **Tag / Reclass / Split / Merge**. The block underfoot commits immediately; four adjacent blocks queue as proposals — they stay independent until you confirm. Live wildlife, plants, transit, and events propose reclassifications the same way.
 
-From orbit, district queries fly into Albuquerque so land-use tiles actually load. Zoning is the coordinating container: wildlife avoids industrial, extractive, and seismic; transit snaps to streets; radar dims the other live dots.
+From orbit, district queries fly into Albuquerque so land-use tiles actually load. Zoning is the coordinating container: wildlife avoids industrial, extractive, and seismic; plants fight paved commercial; transit snaps to streets; radar dims the other live dots.
 
 ## Overlays
 
@@ -35,7 +36,7 @@ Satellite stays on. Queries assemble a set; chips still override.
 
 - **Plots** — US lot lines (Regrid) plus OSM buildings / house numbers worldwide. Click a parcel for the site address, or **No site address** when the lot is vacant.
 - **Zoning** — OSM land-use *and* landcover: residential, commercial, industrial, retail, civic, recreation, construction, quarry/landfill, park/wood, farmland, pasture. Legal municipal codes are still sparse.
-- **Wild / Quakes** — heat maps. Amber wildlife density is GBIF hexes (animals), not a plane and not a country. Click a cell to inspect that layer. The inspector shows a **reality frame**: look-at coordinates, zone, and country as ground context.
+- **Wild / Plants / Quakes** — heat maps. Amber is animals, green is vegetation, not a country. Click a cell for a named occurrence. The inspector shows a **reality frame**: look-at coordinates, zone, and country as ground context.
 - **Rail, Domestic, Health, Transit, Flights, Radar, Alerts, Events**
 
 ## Ground walk

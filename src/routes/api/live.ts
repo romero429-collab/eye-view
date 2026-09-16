@@ -8,6 +8,7 @@ const KINDS = new Set<LiveKind>([
   "events",
   "wildlife",
   "livestock",
+  "plants",
   "health",
   "osm",
   "plots",

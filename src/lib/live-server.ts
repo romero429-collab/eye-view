@@ -10,6 +10,7 @@ export type LiveKind =
   | "events"
   | "wildlife"
   | "livestock"
+  | "plants"
   | "health"
   | "osm"
   | "plots"
@@ -356,7 +357,12 @@ type GbifResult = {
   }>;
 };
 
-async function gbifOccurrences(taxonKey: number, q: LiveQuery, limit = 60): Promise<Feature[]> {
+async function gbifOccurrences(
+  taxonKey: number,
+  q: LiveQuery,
+  limit = 60,
+  opts?: { kind?: string; fallback?: string },
+): Promise<Feature[]> {
   if (q.west == null || q.south == null || q.east == null || q.north == null) return [];
   const span = Math.abs(q.east - q.west) * Math.abs(q.north - q.south);
   if ((q.zoom ?? 0) < 5 && span > 8) return [];
@@ -374,14 +380,16 @@ async function gbifOccurrences(taxonKey: number, q: LiveQuery, limit = 60): Prom
     8000,
   )) as GbifResult | null;
   const features: Feature[] = [];
+  const kind = opts?.kind ?? "sighting";
+  const fallback = opts?.fallback ?? "Animal";
   for (const rec of data?.results ?? []) {
     const lat = rec.decimalLatitude;
     const lon = rec.decimalLongitude;
     if (lat == null || lon == null) continue;
-    const title = rec.species || rec.scientificName || "Animal";
+    const title = rec.species || rec.scientificName || fallback;
     features.push(
       point(lon, lat, {
-        kind: "sighting",
+        kind,
         title,
         detail: [rec.country, rec.eventDate?.slice(0, 10)].filter(Boolean).join(" · "),
         source: "GBIF occurrence search",
@@ -426,6 +434,14 @@ async function livestockFeatures(q: LiveQuery): Promise<FeatureCollection> {
     }),
   );
   return { type: "FeatureCollection", features: batches.flat() };
+}
+
+async function plantFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  const [vascular, grasses] = await Promise.all([
+    gbifOccurrences(7707728, q, 40, { kind: "plant", fallback: "Plant" }),
+    gbifOccurrences(3073, q, 20, { kind: "plant", fallback: "Grass" }),
+  ]);
+  return { type: "FeatureCollection", features: [...vascular, ...grasses] };
 }
 
 let healthCache: { at: number; data: FeatureCollection } | null = null;
@@ -1095,6 +1111,8 @@ export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
       return wildlifeFeatures(q);
     case "livestock":
       return livestockFeatures(q);
+    case "plants":
+      return plantFeatures(q);
     case "health":
       return healthFeatures();
     case "osm":

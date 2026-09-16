@@ -15,6 +15,7 @@ export type MapObjectKind =
   | "event"
   | "trail"
   | "sighting"
+  | "plant"
   | "rail"
   | "fence"
   | "farm"

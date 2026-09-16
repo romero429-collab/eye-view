@@ -23,6 +23,7 @@ const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
   { id: "transit", re: /\b(transit|bus(?:es)?|gtfs|rout(?:e|es)|vehicles?|riders?)\b/ },
   { id: "flights", re: /\b(flights?|aircraft|ads-?b|planes?)\b/ },
   { id: "wildlife", re: /\b(animals?|wildlife|wild|mammals?|habitat|migration|fauna|critters?)\b/ },
+  { id: "plants", re: /\b(plants?|vegetation|flora|trees?|shrubs?|crops?|growing|botany|native plants)\b/ },
   { id: "livestock", re: /\b(livestock|cattle|herd(?:s|ing)?|horses?|domestic)\b/ },
   { id: "trails", re: /\b(terrain|hiking|trails?|footpaths?|paths?)\b/ },
   { id: "zoning", re: /\b(zon(?:e|es|ing)|land-?use|districts?)\b/ },
@@ -75,6 +76,7 @@ export const QUERY_EXAMPLES = [
   "terrain for animals here",
   "walk this street",
   "this is residential",
+  "what's growing here",
   "split this zone",
 ] as const;
 
@@ -178,7 +180,7 @@ export function parseMapQuery(raw: string): MapIntent {
   }
   if (walk && !overlays.includes("streets")) overlays.push("streets");
   if (walk && !overlays.includes("plots")) overlays.push("plots");
-  if ((overlays.includes("wildlife") || overlays.includes("livestock") || overlays.includes("trails")) &&
+  if ((overlays.includes("wildlife") || overlays.includes("livestock") || overlays.includes("plants") || overlays.includes("trails")) &&
       !overlays.includes("zoning")) {
     overlays.push("zoning");
   }
@@ -236,7 +238,7 @@ export function assembleOverlays(intent: MapIntent): OverlayState {
   }
   if (intent.zoneClass) next.zoning = true;
   if (intent.edit) next.zoning = true;
-  if (next.wildlife || next.livestock || next.trails) next.zoning = true;
+  if (next.wildlife || next.livestock || next.plants || next.trails) next.zoning = true;
   if (next.transit || next.rail) next.streets = true;
   return next;
 }

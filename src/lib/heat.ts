@@ -5,7 +5,7 @@ import type { ExpressionSpecification } from "maplibre-gl";
 
 export type HeatStop = { t: number; color: string; label: string };
 
-export type HeatRampId = "wildlife" | "livestock" | "quakes" | "health";
+export type HeatRampId = "wildlife" | "livestock" | "plants" | "quakes" | "health";
 
 export const HEAT_RAMPS: Record<HeatRampId, HeatStop[]> = {
   wildlife: [
@@ -21,6 +21,13 @@ export const HEAT_RAMPS: Record<HeatRampId, HeatStop[]> = {
     { t: 0.5, color: "#c4b89a", label: "Present" },
     { t: 0.8, color: "#d4c2a0", label: "Busy" },
     { t: 1, color: "#e7eaed", label: "Dense" },
+  ],
+  plants: [
+    { t: 0, color: "rgba(0,0,0,0)", label: "None" },
+    { t: 0.18, color: "#3d5c48", label: "Sparse" },
+    { t: 0.42, color: "#3d9e72", label: "Present" },
+    { t: 0.68, color: "#6fbfa8", label: "Busy" },
+    { t: 1, color: "#c5e3c8", label: "Dense" },
   ],
   quakes: [
     { t: 0, color: "rgba(0,0,0,0)", label: "Quiet" },
@@ -166,14 +173,14 @@ export function quakeCircleColor(): ExpressionSpecification {
   ];
 }
 
-export type DensityKind = "wildlife" | "livestock" | "quakes";
+export type DensityKind = "wildlife" | "livestock" | "plants" | "quakes";
 
 export function densityObject(
   kind: DensityKind,
   lng: number,
   lat: number,
 ): {
-  kind: "sighting" | "quake" | "farm";
+  kind: "sighting" | "quake" | "farm" | "plant";
   title: string;
   detail: string;
   source: string;
@@ -214,6 +221,24 @@ export function densityObject(
       lat,
     };
   }
+  if (kind === "plants") {
+    return {
+      kind: "plant",
+      title: "Plant density",
+      detail:
+        "GBIF vascular-plant occurrence heat. Trees, shrubs, and crops as structural data — not scenery, not a country.",
+      source: "GBIF occurrence density (Plantae)",
+      layer: "Plants",
+      facts: [
+        { label: "Layer", value: "Plants" },
+        { label: "Readout", value: "Heat cell · vegetation" },
+        { label: "Taxa", value: "Vascular plants and grasses" },
+        { label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` },
+      ],
+      lng,
+      lat,
+    };
+  }
   return {
     kind: "sighting",
     title: "Wildlife density",
@@ -235,6 +260,7 @@ export function densityObject(
 export const OVERLAY_INK: Partial<Record<string, string>> = {
   wildlife: "#d4a054",
   livestock: "#c4b89a",
+  plants: "#3d9e72",
   quakes: "#c45c2a",
   zoning: "#3aa8b5",
   flights: "#e7eaed",

@@ -95,6 +95,7 @@ export function groundOwnsInspector(overlays: OverlayState, zoom: number | null 
     overlays.zoning ||
       overlays.wildlife ||
       overlays.livestock ||
+      overlays.plants ||
       overlays.quakes ||
       overlays.plots ||
       overlays.transit ||

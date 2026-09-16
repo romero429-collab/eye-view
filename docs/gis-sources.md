@@ -30,6 +30,7 @@ always by zoom 8. Zone colors no longer mix with GDP green.
 | Overlay | Source | Readout |
 | --- | --- | --- |
 | Wild | GBIF hex density (Mammalia) + occurrence search (mammals + birds) | Amber → dense heat. Click a cell → “Wildlife density”, then the nearest named species. |
+| Plants | GBIF Plantae density + Tracheophyta / Poaceae occurrences; OSM wood/grass/farmland/wetland | Green heat. Click a cell → named tree, shrub, or crop. Vegetation is structural data. |
 | Domestic | GBIF cattle density + livestock taxa | Sand heat. |
 | Quakes | USGS 2.5+ last 24h | Magnitude-colored rings on a seismic heat field. |
 

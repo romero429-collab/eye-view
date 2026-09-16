@@ -5,6 +5,7 @@ export type OverlayId =
   | "trails"
   | "wildlife"
   | "livestock"
+  | "plants"
   | "rail"
   | "plots"
   | "zoning"
@@ -68,6 +69,13 @@ export const OVERLAYS: OverlayDef[] = [
     id: "livestock",
     label: "Domestic",
     blurb: "Livestock drives, herding, horse trails",
+    live: true,
+    group: "animals",
+  },
+  {
+    id: "plants",
+    label: "Plants",
+    blurb: "Trees, shrubs, crops — vegetation as data",
     live: true,
     group: "animals",
   },
@@ -150,6 +158,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   trails: false,
   wildlife: false,
   livestock: false,
+  plants: false,
   rail: false,
   plots: false,
   zoning: false,
@@ -177,6 +186,8 @@ export const TILES = {
     "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=359&bin=hex&hexPerTile=22&style=classic.poly",
   gbifStock:
     "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=2441022&bin=hex&hexPerTile=22&style=purpleYellow-noborder.poly",
+  gbifPlants:
+    "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=6&bin=hex&hexPerTile=22&style=green.poly",
   parcels:
     "https://tiles.arcgis.com/tiles/KzeiCaQsMoeCfoCq/arcgis/rest/services/Regrid_Nationwide_Parcel_Boundaries_v1/MapServer/tile/{z}/{y}/{x}",
 } as const;
