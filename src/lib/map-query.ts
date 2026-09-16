@@ -73,6 +73,7 @@ export const QUERY_EXAMPLES = [
   "terrain for animals here",
   "walk this street",
   "wildlife vs seismic",
+  "recreation here",
 ] as const;
 
 function matchZone(text: string): { id: string; label: string } | null {

@@ -22,8 +22,16 @@ import { type MetricId } from "@/lib/metrics";
 import type { GlobeRotation, HoverInfo, MapObject, MapTransform, ViewMode } from "@/lib/map-types";
 import { HOME_ROTATION } from "@/lib/map-types";
 import { altitudeFromZoom, DEFAULT_OVERLAYS, HOME_VIEW, type OverlayId } from "@/lib/basemaps";
-import { assembleOverlays, type MapIntent } from "@/lib/map-query";
-import { coordinateToggle, evaluateRules, type SceneSample } from "@/lib/zoning-rules";
+import { assembleOverlays, type MapIntent, QUERY_EXAMPLES } from "@/lib/map-query";
+import { coordinateToggle, evaluateRules, needsDistrictScale, type SceneSample } from "@/lib/zoning-rules";
+import {
+  loadAttention,
+  noticeMany,
+  persistAttention,
+  rankQueries,
+  type AttentionMap,
+} from "@/lib/attention";
+import { buildPerception, formatDecimal, groundOwnsInspector } from "@/lib/perception";
 import {
   formatLat,
   formatLon,
@@ -48,6 +56,7 @@ export function AtlasApp() {
   const [picked, setPicked] = useState<MapObject | null>(null);
   const [intent, setIntent] = useState<MapIntent | null>(null);
   const [scene, setScene] = useState<SceneSample | null>(null);
+  const [attention, setAttention] = useState<AttentionMap>(() => loadAttention());
 
   const scale = useMemo(() => createChoroplethScale(metric), [metric]);
   const selected = selectedId
@@ -57,15 +66,35 @@ export function AtlasApp() {
   const globe = viewMode === "godsEye";
   const walking = viewMode === "walk";
   const look = viewLatLon(rotation);
+  const tooHigh = needsDistrictScale(scene?.zoom);
   const hits = useMemo(
-    () => evaluateRules({ overlays, scene }),
-    [overlays, scene],
+    () => evaluateRules({ overlays, scene, zoneFilter: intent?.zoneClass ?? null }),
+    [overlays, scene, intent],
   );
+  const perception = useMemo(
+    () => buildPerception({ scene, overlays, object: picked, rules: hits, attention }),
+    [scene, overlays, picked, hits, attention],
+  );
+  const queryExamples = useMemo(
+    () => rankQueries(QUERY_EXAMPLES, attention),
+    [attention],
+  );
+  const inspectGround = groundOwnsInspector(overlays, scene?.zoom);
 
   const inspectCountry = useCallback((id: string | null) => {
     setSelectedId(id);
     if (id) setPicked(null);
   }, []);
+
+  const onPickObject = useCallback((object: MapObject | null) => {
+    setPicked(object);
+    if (!object) return;
+    setAttention((prev) => {
+      const next = noticeMany(prev, [object.kind, object.layer, scene?.zoneClass]);
+      persistAttention(next);
+      return next;
+    });
+  }, [scene?.zoneClass]);
 
   const goToCountry = useCallback((id: string | null) => {
     inspectCountry(id);
@@ -132,7 +161,8 @@ export function AtlasApp() {
         next.overlays.includes("transit") ||
         next.overlays.includes("plots");
       if (needsDistrict) {
-        window.setTimeout(() => mapRef.current?.dropToDistricts(), 80);
+        setViewMode("atlas");
+        window.setTimeout(() => mapRef.current?.dropToDistricts(next.zoneClass), 280);
       }
     },
     [goToCountry, inspectCountry],
@@ -208,7 +238,7 @@ export function AtlasApp() {
           </div>
         </div>
         <div className="min-w-0 flex-1">
-          <MapQuery onAsk={applyIntent} onPickCountry={goToCountry} />
+          <MapQuery onAsk={applyIntent} onPickCountry={goToCountry} examples={queryExamples} />
         </div>
         <div className="min-w-0 md:max-w-xl md:flex-1">
           <MetricSwitcher value={metric} onChange={onMetricChange} />
@@ -236,7 +266,7 @@ export function AtlasApp() {
             onSizeChange={setMapSize}
             overlays={overlays}
             onLiveNote={setLiveNote}
-            onPickObject={setPicked}
+            onPickObject={onPickObject}
             zoneFilter={intent?.zoneClass ?? null}
             onScene={setScene}
           />
@@ -245,14 +275,22 @@ export function AtlasApp() {
             metric={metric}
             containerWidth={mapSize.width}
           />
-          {globe || walking ? (
-            <p className="pointer-events-none absolute top-3 left-3 font-mono text-xs leading-relaxed font-medium tracking-widest text-subtle uppercase md:top-4 md:left-4">
-              {formatLat(look.lat)}
-              <span className="mx-2 text-border-strong">/</span>
-              {formatLon(look.lon)}
-              <span className="mx-2 text-border-strong">/</span>
-              {walking ? `${Math.round(transform.k * 10) / 10} z` : `${altitudeFromZoom(transform.k).toLocaleString()} km`}
-            </p>
+          <p className="pointer-events-none absolute top-3 left-3 font-mono text-xs leading-relaxed font-medium tracking-widest text-subtle uppercase md:top-4 md:left-4">
+            {scene
+              ? formatDecimal(scene.lng, scene.lat)
+              : `${formatLat(look.lat)} / ${formatLon(look.lon)}`}
+            <span className="mx-2 text-border-strong">/</span>
+            {walking
+              ? `${Math.round(transform.k * 10) / 10} z`
+              : `${altitudeFromZoom(scene?.zoom ?? transform.k).toLocaleString()} km`}
+          </p>
+          {!walking ? (
+            <div
+              className="pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
+              aria-hidden="true"
+            >
+              <span className="block size-2 rounded-full border border-primary bg-primary/30" />
+            </div>
           ) : null}
           {walking ? (
             <WalkHud
@@ -270,32 +308,52 @@ export function AtlasApp() {
             <div className="pointer-events-auto flex min-w-0 flex-col gap-2">
               {hudOpen ? (
                 <>
-                  <LayerPanel
-                    value={overlays}
-                    onToggle={toggleOverlay}
-                    liveNote={
-                      overlays.radar ||
-                      overlays.quakes ||
-                      overlays.transit ||
-                      overlays.flights ||
-                      overlays.alerts ||
-                      overlays.events ||
-                      overlays.wildlife ||
-                      overlays.livestock ||
-                      overlays.health ||
-                      overlays.rail ||
-                      overlays.plots ||
-                      overlays.zoning
-                        ? liveNote
-                        : undefined
-                    }
-                  />
+                  <div className="hidden md:block">
+                    <LayerPanel
+                      value={overlays}
+                      onToggle={toggleOverlay}
+                      liveNote={
+                        overlays.radar ||
+                        overlays.quakes ||
+                        overlays.transit ||
+                        overlays.flights ||
+                        overlays.alerts ||
+                        overlays.events ||
+                        overlays.wildlife ||
+                        overlays.livestock ||
+                        overlays.health ||
+                        overlays.rail ||
+                        overlays.plots ||
+                        overlays.zoning
+                          ? liveNote
+                          : undefined
+                      }
+                    />
+                  </div>
+                  <div className="md:hidden">
+                    <CompactLayers value={overlays} onToggle={toggleOverlay} />
+                    {liveNote ? (
+                      <p className="mt-1 max-w-[17rem] px-1 text-xs text-subtle">{liveNote}</p>
+                    ) : null}
+                  </div>
                   <HierarchyPanel
                     hits={hits}
                     zoneLabel={scene?.zoneLabel}
                     onDropIn={() => {
                       setOverlays((prev) => ({ ...prev, zoning: true, streets: true }));
-                      mapRef.current?.dropToDistricts();
+                      setViewMode("atlas");
+                      window.setTimeout(() => mapRef.current?.dropToDistricts(), 280);
+                    }}
+                    onWalk={() => {
+                      setOverlays((prev) => ({
+                        ...prev,
+                        streets: true,
+                        plots: true,
+                        labels: true,
+                        zoning: true,
+                      }));
+                      setViewMode("walk");
+                      window.setTimeout(() => mapRef.current?.enterWalk(), 40);
                     }}
                   />
                   {overlays.metric && !overlays.zoning && !overlays.wildlife && !overlays.quakes ? (
@@ -303,7 +361,7 @@ export function AtlasApp() {
                   ) : null}
                   {overlays.zoning || overlays.wildlife || overlays.quakes || overlays.livestock ? (
                     <OverlayKey
-                      zoning={overlays.zoning}
+                      zoning={overlays.zoning && !tooHigh}
                       wildlife={overlays.wildlife}
                       quakes={overlays.quakes}
                       livestock={overlays.livestock}
@@ -329,9 +387,10 @@ export function AtlasApp() {
           </div>
         </div>
 
-        {picked ? (
+        {picked || inspectGround ? (
           <ObjectPanel
             object={picked}
+            frame={perception}
             onClose={() => setPicked(null)}
             className="hidden w-80 shrink-0 lg:flex"
           />
@@ -356,6 +415,7 @@ export function AtlasApp() {
         {picked ? (
           <ObjectPanel
             object={picked}
+            frame={perception}
             onClose={() => setPicked(null)}
             showKey={false}
             className="border-l-0"

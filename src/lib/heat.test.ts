@@ -34,12 +34,16 @@ describe("zoning swatches", () => {
     const ids = new Set([...LANDUSE_SWATCHES, ...COVER_SWATCHES].map((s) => s.id));
     assert.ok(ids.has("residential"));
     assert.ok(ids.has("industrial"));
-    assert.ok(ids.has("park"));
-    assert.ok(ids.has("farmland"));
+    assert.ok(ids.has("recreation"));
+    assert.ok(ids.has("extractive"));
+    assert.ok(ids.has("pasture"));
     const colors = [...LANDUSE_SWATCHES, ...COVER_SWATCHES].map((s) => s.color);
     assert.equal(new Set(colors).size, colors.length);
     assert.equal(zoneLabel("wood"), "Park / wood");
     assert.equal(zoneLabel("garages"), "Industrial");
+    assert.equal(zoneLabel("stadium"), "Recreation");
+    assert.equal(zoneLabel("quarry"), "Quarry / landfill");
+    assert.equal(zoneLabel("meadow"), "Pasture");
   });
 });
 

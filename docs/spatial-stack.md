@@ -109,5 +109,8 @@ or another ground overlay is on — a tap on a GBIF hex is animals, not GDP.
 | **MapLibre + OpenFreeMap** | Tile-backed spatial index in the browser. | **What the HUD uses now.** |
 
 Client helpers: `src/lib/spatial.ts` (haversine, destination),
-`src/lib/spatial-index.ts` (GiST analogue), `src/lib/heat.ts` (ramps),
-`src/lib/zoning-rules.ts` (coordinator), `src/lib/map-query.ts` (ask the map).
+`src/lib/spatial-index.ts` (GiST analogue), `src/lib/heat.ts` (ramps + zone
+swatches including recreation / construction / extractive / pasture),
+`src/lib/zoning-rules.ts` (coordinator), `src/lib/map-query.ts` (ask the map),
+`src/lib/perception.ts` (Kiyoshi reality frame), `src/lib/attention.ts`
+(inspect → salience). How this HUD sits in the OS: [kiyoshi.md](kiyoshi.md).

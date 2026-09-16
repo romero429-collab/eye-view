@@ -3,10 +3,12 @@ import { Button } from "@/components/ui/button";
 import { LAYER_META, OBJECT_META } from "@/lib/layer-meta";
 import { OVERLAYS } from "@/lib/basemaps";
 import type { MapObject } from "@/lib/map-types";
+import { formatDecimal, type PerceptionFrame } from "@/lib/perception";
 import { cn } from "@/lib/utils";
 
 type ObjectPanelProps = {
   object: MapObject | null;
+  frame?: PerceptionFrame | null;
   onClose: () => void;
   showKey?: boolean;
   className?: string;
@@ -44,8 +46,47 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
+function RealityFrame({ frame }: { frame: PerceptionFrame }) {
+  const look = formatDecimal(frame.look.lng, frame.look.lat);
+  return (
+    <div className="mt-4 border-t border-border pt-3">
+      <p className="text-xs font-medium uppercase tracking-label text-subtle">Reality frame</p>
+      <dl className="mt-2 divide-y divide-border border-y border-border">
+        <div className="flex items-baseline justify-between gap-3 py-2">
+          <dt className="text-xs uppercase tracking-label text-subtle">Look-at</dt>
+          <dd className="font-mono text-xs text-fg">{look}</dd>
+        </div>
+        {frame.zone ? (
+          <div className="flex items-baseline justify-between gap-3 py-2">
+            <dt className="text-xs uppercase tracking-label text-subtle">Zone</dt>
+            <dd className="text-sm font-medium text-fg">{frame.zone.label}</dd>
+          </div>
+        ) : null}
+        {frame.country ? (
+          <div className="flex items-baseline justify-between gap-3 py-2">
+            <dt className="text-xs uppercase tracking-label text-subtle">Ground</dt>
+            <dd className="text-sm font-medium text-fg">{frame.country}</dd>
+          </div>
+        ) : null}
+        {frame.overlays.length ? (
+          <div className="flex items-baseline justify-between gap-3 py-2">
+            <dt className="text-xs uppercase tracking-label text-subtle">Layers</dt>
+            <dd className="text-right text-xs font-medium text-fg">
+              {frame.overlays.slice(0, 4).join(" · ")}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      <p className="mt-2 text-xs leading-relaxed text-subtle">
+        Ground is context. The object above is what you clicked — never the country GDP.
+      </p>
+    </div>
+  );
+}
+
 export function ObjectPanel({
   object,
+  frame,
   onClose,
   showKey = true,
   className,
@@ -116,12 +157,13 @@ export function ObjectPanel({
             ) : null}
             {object.lng != null && object.lat != null ? (
               <p className="mt-1 font-mono text-xs text-subtle">
-                {object.lat.toFixed(3)}°, {object.lng.toFixed(3)}°
+                {formatDecimal(object.lng, object.lat)}
               </p>
             ) : null}
             {meta ? (
               <p className="mt-4 text-sm leading-relaxed text-muted">{meta.usage}</p>
             ) : null}
+            {frame ? <RealityFrame frame={frame} /> : null}
           </div>
         ) : (
           <div className="px-5 pt-5 pb-4">
@@ -129,12 +171,13 @@ export function ObjectPanel({
               Inspector
             </p>
             <h2 className="font-display mt-1 text-xl font-medium tracking-display">
-              Click anything
+              {frame?.focus ? frame.focus.title : "What Kiyoshi sees"}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              Select a heat cell, zone, animal sighting, rail line, or live pulse
-              for a full readout. Country statistics stay at globe scale.
+              Click a heat cell, zone, building, or live pulse. Country statistics stay
+              at globe scale — they never hijack a ground tap.
             </p>
+            {frame ? <RealityFrame frame={frame} /> : null}
           </div>
         )}
         {showKey ? (

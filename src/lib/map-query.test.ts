@@ -37,6 +37,14 @@ describe("parseMapQuery", () => {
     assert.ok(intent.overlays.includes("zoning"));
     assert.equal(intent.zoneClass, null);
   });
+
+  it("names recreation as a district class", () => {
+    const intent = parseMapQuery("recreation here");
+    assert.equal(intent.kind, "ask");
+    assert.equal(intent.here, true);
+    assert.equal(intent.zoneClass, "recreation");
+    assert.ok(intent.overlays.includes("zoning"));
+  });
 });
 
 describe("assembleOverlays", () => {

@@ -35,6 +35,7 @@ import { DOMESTIC_TRAILS, WILD_TRAILS } from "@/lib/animal-trails";
 import {
   COVER_CLASS_FILTER,
   COVER_FILL_COLOR,
+  DISTRICT_SPOTS,
   DISTRICT_VIEW,
   HOME_VIEW,
   LANDUSE_CLASS_FILTER,
@@ -56,7 +57,7 @@ import {
   heatmapColorExpr,
   quakeCircleColor,
 } from "@/lib/heat";
-import { radarDimFactor, type SceneSample } from "@/lib/zoning-rules";
+import { DISTRICT_ZOOM, radarDimFactor, type SceneSample } from "@/lib/zoning-rules";
 
 declare global {
   interface Window {
@@ -74,7 +75,7 @@ export type WorldMapHandle = {
   reset: () => void;
   flyTo: (lng: number, lat: number, zoom?: number) => void;
   enterWalk: (lng?: number, lat?: number) => void;
-  dropToDistricts: () => void;
+  dropToDistricts: (zoneClass?: string | null) => void;
   holdKey: (code: string, down: boolean) => void;
   setHeldKeys: (codes: string[]) => void;
   queryScene: () => SceneSample | null;
@@ -103,6 +104,10 @@ type WorldMapProps = {
   zoneFilter?: string | null;
   onScene?: (scene: SceneSample | null) => void;
 };
+
+function isCoarsePointer(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+}
 
 function resolveColor(el: Element, token: string): string {
   if (token.startsWith("var(")) {
@@ -364,7 +369,7 @@ function buildStyle(): StyleSpecification {
         type: "fill",
         source: "openmaptiles",
         "source-layer": "landcover",
-        minzoom: 3,
+        minzoom: DISTRICT_ZOOM,
         filter: ["match", ["get", "class"], COVER_CLASS_FILTER, true, false],
         layout: { visibility: "none" },
         paint: {
@@ -390,7 +395,7 @@ function buildStyle(): StyleSpecification {
         type: "fill",
         source: "openmaptiles",
         "source-layer": "landuse",
-        minzoom: 6,
+        minzoom: DISTRICT_ZOOM,
         filter: ["match", ["get", "class"], LANDUSE_CLASS_FILTER, true, false],
         layout: { visibility: "none" },
         paint: {
@@ -1245,12 +1250,14 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
   const keysRef = useRef(new Set<string>());
   const speedRef = useRef(0);
   const onSceneRef = useRef(onScene);
+  const hoverCbRef = useRef(onHover);
   metricRef.current = metric;
   scaleRef.current = scale;
   liveNoteRef.current = onLiveNote;
   pickRef.current = onPickObject;
   overlaysRef.current = overlays;
   onSceneRef.current = onScene;
+  hoverCbRef.current = onHover;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
@@ -1263,8 +1270,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     const center = map.getCenter();
     const p = map.project(center);
     const box: [[number, number], [number, number]] = [
-      [p.x - 18, p.y - 18],
-      [p.x + 18, p.y + 18],
+      [p.x - 48, p.y - 48],
+      [p.x + 48, p.y + 48],
     ];
     const zoneHits = [
       ...(map.getLayer("otm-zone")
@@ -1330,20 +1337,20 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         duration: 800,
       });
     },
-    dropToDistricts: () => {
+    dropToDistricts: (zoneClass?: string | null) => {
       const map = mapRef.current;
       if (!map) return;
-      if (map.getZoom() >= 12) return;
-      const low = map.getZoom() < 8;
+      const spot =
+        (zoneClass && DISTRICT_SPOTS[zoneClass]) ||
+        (map.getZoom() < 8 ? DISTRICT_VIEW : null);
       const center = map.getCenter();
-      map.easeTo({
-        center: low
-          ? [DISTRICT_VIEW.lng, DISTRICT_VIEW.lat]
+      map.jumpTo({
+        center: spot
+          ? [spot.lng, spot.lat]
           : [center.lng, center.lat],
-        zoom: DISTRICT_VIEW.zoom,
+        zoom: spot?.zoom ?? Math.max(map.getZoom(), DISTRICT_VIEW.zoom),
         bearing: 0,
         pitch: 0,
-        duration: 900,
       });
     },
     holdKey: (code: string, down: boolean) => {
@@ -1489,9 +1496,26 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         }
       }, 7000);
       map.on("move", emitView);
+      map.on("zoomend", () => {
+        if (!map) return;
+        if (map.getZoom() < 6.5 && !isCoarsePointer()) return;
+        if (hoverRef.current) {
+          try {
+            map.setFeatureState(
+              { source: "countries", id: hoverRef.current },
+              { hover: false },
+            );
+          } catch {
+            /* source may not be ready */
+          }
+          hoverRef.current = null;
+        }
+        hoverCbRef.current(null);
+      });
 
       map.on("click", (event: MapMouseEvent) => {
         if (!map) return;
+        hoverCbRef.current(null);
         const activeMap = map;
         const { lng, lat } = event.lngLat;
         const present = HIT_LAYERS.filter((id) => Boolean(activeMap.getLayer(id)));
@@ -1626,7 +1650,25 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       map.on("mousemove", "choropleth", (event: MapLayerMouseEvent) => {
         if (!map) return;
         const active = map;
-        if (active.getZoom() >= 6.5) return;
+        const ov = overlaysRef.current;
+        const hideCountry =
+          isCoarsePointer() ||
+          ov.zoning ||
+          ov.wildlife ||
+          ov.livestock ||
+          ov.quakes ||
+          active.getZoom() >= 6.5;
+        if (hideCountry) {
+          if (hoverRef.current) {
+            map.setFeatureState(
+              { source: "countries", id: hoverRef.current },
+              { hover: false },
+            );
+            hoverRef.current = null;
+          }
+          hoverCbRef.current(null);
+          return;
+        }
         const overlayHits = POINT_HIT_LAYERS.concat(AREA_HIT_LAYERS).filter((id) =>
           Boolean(active.getLayer(id)),
         );
@@ -1650,7 +1692,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           map.setFeatureState({ source: "countries", id: iso }, { hover: true });
           hoverRef.current = iso;
         }
-        onHover({
+        hoverCbRef.current({
           country: lookupCountry({
             id: iso,
             properties: { name },
@@ -1671,13 +1713,14 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           );
           hoverRef.current = null;
         }
-        onHover(null);
+        hoverCbRef.current(null);
       });
 
       map.on("mousemove", "quakes", (event: MapLayerMouseEvent) => {
         if (!map) return;
         const feat = event.features?.[0];
         if (!feat) return;
+        if (isCoarsePointer()) return;
         map.getCanvas().style.cursor = "pointer";
         const mag = Number(feat.properties?.mag ?? 0);
         const place = String(feat.properties?.place ?? "Earthquake");
@@ -1685,7 +1728,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         const when = time
           ? new Date(time).toISOString().slice(11, 16) + " UTC"
           : "";
-        onHover({
+        hoverCbRef.current({
           country: undefined,
           atlasName: place,
           x: event.point.x,
@@ -1698,7 +1741,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         });
       });
       map.on("mouseleave", "quakes", () => {
-        onHover(null);
+        hoverCbRef.current(null);
       });
 
       const bindLiveLayer = (
@@ -1712,11 +1755,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         map?.on("mousemove", layer, (event: MapLayerMouseEvent) => {
           const feat = event.features?.[0];
           if (!feat || !map) return;
+          if (isCoarsePointer()) return;
           map.getCanvas().style.cursor = "pointer";
           const title = String(feat.properties?.title ?? layer);
           const detail = String(feat.properties?.detail ?? "");
           const hoverKind = (String(feat.properties?.kind ?? kind) as typeof kind);
-          onHover({
+          hoverCbRef.current({
             country: undefined,
             atlasName: title,
             x: event.point.x,
@@ -1726,7 +1770,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         });
         map?.on("mouseleave", layer, () => {
           if (map) map.getCanvas().style.cursor = "";
-          onHover(null);
+          hoverCbRef.current(null);
         });
       };
       bindLiveLayer("transit", "transit");

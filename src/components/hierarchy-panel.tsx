@@ -15,9 +15,10 @@ type HierarchyPanelProps = {
   hits: RuleHit[];
   zoneLabel?: string;
   onDropIn?: () => void;
+  onWalk?: () => void;
 };
 
-export function HierarchyPanel({ hits, zoneLabel, onDropIn }: HierarchyPanelProps) {
+export function HierarchyPanel({ hits, zoneLabel, onDropIn, onWalk }: HierarchyPanelProps) {
   if (hits.length === 0) return null;
   const needScale = hits.some((hit) => hit.id === "need-scale");
   const shownLabel = needScale ? undefined : zoneLabel;
@@ -49,11 +50,18 @@ export function HierarchyPanel({ hits, zoneLabel, onDropIn }: HierarchyPanelProp
           </li>
         ))}
       </ul>
-      {needScale && onDropIn ? (
-        <div className="px-1.5 pt-2 pb-0.5">
-          <Button type="button" size="sm" className="w-full" onClick={onDropIn}>
-            Drop into Albuquerque
-          </Button>
+      {needScale && (onDropIn || onWalk) ? (
+        <div className="flex flex-col gap-1 px-1.5 pt-2 pb-0.5">
+          {onDropIn ? (
+            <Button type="button" size="sm" className="w-full" onClick={onDropIn}>
+              Drop into Albuquerque
+            </Button>
+          ) : null}
+          {onWalk ? (
+            <Button type="button" size="sm" variant="outline" className="w-full" onClick={onWalk}>
+              Walk the street
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

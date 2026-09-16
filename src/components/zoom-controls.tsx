@@ -81,8 +81,8 @@ export function ZoomControls({
           )}
           onClick={() => onViewMode("walk")}
           aria-pressed={viewMode === "walk"}
-          aria-label="Ground walk"
-          title="Walk"
+          aria-label="Ground walk — drop to street level"
+          title="Walk the street"
         >
           <Footprints />
         </Button>

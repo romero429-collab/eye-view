@@ -28,8 +28,12 @@ export function MapLegend({ metric, stops }: MapLegendProps) {
         ))}
       </div>
       <div className="mt-1.5 flex justify-between gap-2 font-medium tabular-nums text-xs text-muted">
-        <span>{stops[0]?.label.replace(/^< /, "")}</span>
-        <span>{stops[stops.length - 1]?.label.replace(/^≥ /, "")}</span>
+        <span>{stops[0] ? def.formatShort(stops[0].min) : ""}</span>
+        <span>
+          {stops.length
+            ? def.formatShort(stops[stops.length - 1]!.max)
+            : ""}
+        </span>
       </div>
       <div className="mt-2 flex items-center gap-2 text-xs text-subtle">
         <span
@@ -85,6 +89,7 @@ export function OverlayKey({
   if (wildlife) ramps.push({ id: "wildlife", title: "Wild" });
   if (livestock) ramps.push({ id: "livestock", title: "Domestic" });
   if (quakes) ramps.push({ id: "quakes", title: "Quakes" });
+  if (!zoning && ramps.length === 0) return null;
   return (
     <div
       className="pointer-events-none max-w-56 rounded-[calc(var(--radius-md)+4px)] border border-border bg-surface p-3 shadow-[var(--shadow-panel)] md:max-w-72"

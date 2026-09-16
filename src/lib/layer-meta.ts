@@ -5,7 +5,6 @@ import {
   Bus,
   CloudRain,
   Fence,
-  Footprints,
   Grid2x2,
   HeartPulse,
   House,
@@ -13,6 +12,7 @@ import {
   Layers,
   MapPin,
   MapPinHouse,
+  Mountain,
   PawPrint,
   Plane,
   TrainFront,
@@ -43,7 +43,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
     usage: "Road network over the satellite base.",
   },
   trails: {
-    icon: Footprints,
+    icon: Mountain,
     usage:
       "OSM hiking network via Waymarked Trails: highway=path/footway, route=hiking, sac_scale, trail_visibility.",
   },
@@ -70,7 +70,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   zoning: {
     icon: Grid2x2,
     usage:
-      "OSM land-use (residential, commercial, industrial, civic) plus landcover (wood, grass, farmland) via OpenFreeMap. Country metric fades so zone color is the fill.",
+      "OSM land-use (residential, commercial, industrial, civic, recreation, construction, quarry/landfill) plus landcover (wood, grass, farmland, pasture) via OpenFreeMap. Country metric fades so zone color is the fill.",
   },
   health: {
     icon: HeartPulse,

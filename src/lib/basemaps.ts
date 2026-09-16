@@ -217,6 +217,17 @@ export const DISTRICT_VIEW = {
   name: "Albuquerque",
 };
 
+export const DISTRICT_SPOTS: Record<string, { lng: number; lat: number; zoom: number }> = {
+  industrial: { lng: -106.6522, lat: 35.0684, zoom: 14.1 },
+  commercial: { lng: -106.6513, lat: 35.0848, zoom: 14.2 },
+  residential: { lng: -106.606, lat: 35.104, zoom: 13.8 },
+  retail: { lng: -106.5655, lat: 35.1105, zoom: 14.4 },
+  recreation: { lng: -106.678, lat: 35.093, zoom: 14.2 },
+  civic: { lng: -106.62, lat: 35.084, zoom: 14.0 },
+  extractive: { lng: -106.78, lat: 35.04, zoom: 13.6 },
+  pasture: { lng: -106.72, lat: 35.16, zoom: 13.4 },
+};
+
 export function altitudeFromZoom(zoom: number): number {
   return Math.round(40075017 / Math.pow(2, zoom + 1));
 }

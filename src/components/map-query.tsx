@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 type MapQueryProps = {
   onAsk: (intent: MapIntent, address?: MapObject) => void;
   onPickCountry: (id: string) => void;
+  examples?: readonly string[];
 };
 
 type AddressHit = {
@@ -16,7 +17,7 @@ type AddressHit = {
   object: MapObject;
 };
 
-export function MapQuery({ onAsk, onPickCountry }: MapQueryProps) {
+export function MapQuery({ onAsk, onPickCountry, examples = QUERY_EXAMPLES }: MapQueryProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -99,7 +100,7 @@ export function MapQuery({ onAsk, onPickCountry }: MapQueryProps) {
 
   const rows: Row[] = [];
   if (query.trim().length === 0 && open) {
-    for (const example of QUERY_EXAMPLES) {
+    for (const example of examples) {
       rows.push({ type: "example", title: example });
     }
   } else {
@@ -230,7 +231,7 @@ export function MapQuery({ onAsk, onPickCountry }: MapQueryProps) {
       ) : null}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">
-        {QUERY_EXAMPLES.map((example) => (
+        {examples.map((example) => (
           <button
             key={example}
             type="button"

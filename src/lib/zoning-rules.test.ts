@@ -12,6 +12,9 @@ describe("zoneClassOf", () => {
   it("maps OSM landuse and landcover classes onto HUD swatches", () => {
     assert.equal(zoneClassOf("garages"), "industrial");
     assert.equal(zoneClassOf("hospital"), "civic");
+    assert.equal(zoneClassOf("stadium"), "recreation");
+    assert.equal(zoneClassOf("quarry"), "extractive");
+    assert.equal(zoneClassOf("meadow"), "pasture");
     assert.equal(zoneClassOf("wood"), "park");
     assert.equal(zoneClassOf("farmland"), "farmland");
     assert.equal(zoneClassOf("nope"), "unknown");
@@ -71,6 +74,47 @@ describe("evaluateRules", () => {
     assert.ok(hits.some((h) => h.id === "need-scale"));
     assert.equal(hits.some((h) => h.id === "container"), false);
     assert.ok(!hits.some((h) => h.title.toLowerCase().includes("no zone in view contains")));
+  });
+
+  it("still asks to drop when a landcover class leaks at orbit altitude", () => {
+    const hits = evaluateRules({
+      overlays: { ...DEFAULT_OVERLAYS, zoning: true },
+      scene: {
+        lng: -104.95,
+        lat: 34.75,
+        zoom: 6.2,
+        bearing: 0,
+        pitch: 0,
+        zoneClass: "farmland",
+        zoneLabel: "Farmland",
+        quakes: 0,
+        transit: 0,
+        wildlife: 0,
+      },
+    });
+    assert.ok(hits.some((h) => h.id === "need-scale"));
+    assert.equal(hits.some((h) => h.id === "container"), false);
+  });
+
+  it("never treats a No zone label as a containing district", () => {
+    const hits = evaluateRules({
+      overlays: { ...DEFAULT_OVERLAYS, zoning: true },
+      scene: {
+        lng: -106.65,
+        lat: 35.08,
+        zoom: 14,
+        bearing: 0,
+        pitch: 0,
+        zoneClass: null,
+        zoneLabel: "No zone in view",
+        quakes: 0,
+        transit: 0,
+        wildlife: 0,
+      },
+    });
+    assert.ok(hits.some((h) => h.id === "empty-zone"));
+    assert.equal(hits.some((h) => h.id === "container"), false);
+    assert.ok(!hits.some((h) => /contains the view/i.test(h.title)));
   });
 
   it("dims live layers when radar is on", () => {

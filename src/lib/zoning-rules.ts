@@ -37,11 +37,12 @@ export function needsDistrictScale(zoom: number | null | undefined): boolean {
 export type RuleContext = {
   overlays: OverlayState;
   scene: SceneSample | null;
+  zoneFilter?: string | null;
 };
 
-const AVOID_WILDLIFE = new Set(["industrial", "military", "garages"]);
-const PREFER_TRAILS = new Set(["residential", "civic", "cemetery", "park", "wood", "grass"]);
-const PREFER_STOCK = new Set(["industrial"]);
+const AVOID_WILDLIFE = new Set(["industrial", "military", "garages", "extractive", "construction"]);
+const PREFER_TRAILS = new Set(["residential", "civic", "cemetery", "park", "wood", "grass", "recreation", "pasture"]);
+const PREFER_STOCK = new Set(["industrial", "pasture", "farmland"]);
 
 export function zoneClassOf(raw: string | null | undefined): ZoneClassId {
   if (!raw) return "unknown";
@@ -64,12 +65,16 @@ export function coordinateToggle(state: OverlayState, id: OverlayId): OverlaySta
 }
 
 export function evaluateRules(ctx: RuleContext): RuleHit[] {
-  const { overlays, scene } = ctx;
+  const { overlays, scene, zoneFilter } = ctx;
   const hits: RuleHit[] = [];
   const klass = zoneClassOf(scene?.zoneClass);
   const labeled = scene?.zoneLabel || zoneLabel(klass, "Unknown land use");
   const tooHigh = needsDistrictScale(scene?.zoom);
-  const zoned = overlays.zoning || klass !== "unknown";
+  const unlabeled =
+    klass === "unknown" ||
+    !scene?.zoneClass ||
+    /^no (zone|district)/i.test(labeled);
+  const zoned = overlays.zoning || !unlabeled;
 
   if (overlays.zoning && tooHigh) {
     hits.push({
@@ -80,7 +85,7 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
         "Land-use tiles load below about 40 km. Drop in to Albuquerque, then walk the street.",
       local: false,
     });
-  } else if (zoned && klass !== "unknown") {
+  } else if (zoned && !unlabeled) {
     hits.push({
       id: "container",
       effect: "container",
@@ -89,13 +94,16 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
         "Zoning is the coordinating container. Other feeds snap, avoid, or dim inside this district.",
       local: true,
     });
-  } else if (overlays.zoning && klass === "unknown") {
+  } else if (overlays.zoning) {
     hits.push({
       id: "empty-zone",
       effect: "container",
-      title: "No district at this look-at",
-      detail:
-        "OpenStreetMap has no land-use polygon under the crosshair. Pan to a block or drop into a city.",
+      title: zoneFilter
+        ? `No ${zoneFilter} under the crosshair`
+        : "No district at this look-at",
+      detail: zoneFilter
+        ? `The view is filtered to ${zoneFilter}. Pan until that class fills the look-at, or drop into a known district.`
+        : "OpenStreetMap has no land-use polygon under the crosshair. Pan to a block or drop into a city.",
       local: false,
     });
   }
@@ -169,9 +177,15 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
   if (overlays.livestock && PREFER_STOCK.has(klass)) {
     hits.push({
       id: "stock-industry",
-      effect: "avoid",
-      title: "Livestock avoid industrial",
-      detail: "Herding and pasture sit outside industrial land-use.",
+      effect: klass === "pasture" || klass === "farmland" ? "prefer" : "avoid",
+      title:
+        klass === "pasture" || klass === "farmland"
+          ? "Livestock prefer this land use"
+          : "Livestock avoid industrial",
+      detail:
+        klass === "pasture" || klass === "farmland"
+          ? `${labeled} is pasture-grade ground for herds.`
+          : "Herding and pasture sit outside industrial land-use.",
       local: true,
     });
   }

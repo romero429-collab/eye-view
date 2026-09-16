@@ -1,6 +1,6 @@
 import { scaleQuantile } from "d3-scale";
-import { CHOROPLETH_BINS, METRICS, countryValue, type MetricId } from "@/lib/metrics";
-import { countriesWithMetric } from "@/lib/countries";
+import { CHOROPLETH_BINS, METRICS, countryValue, type MetricId } from "./metrics.ts";
+import { countriesWithMetric } from "./countries.ts";
 
 export type LegendStop = {
   color: string;
