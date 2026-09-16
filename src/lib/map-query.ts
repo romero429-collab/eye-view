@@ -35,6 +35,7 @@ const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
   { id: "events", re: /\b(hazards?|wildfires?|volcano(?:es)?|eonet)\b/ },
   { id: "streets", re: /\b(streets?|roads?|navigation)\b/ },
   { id: "health", re: /\b(health|sickness|disease)\b/ },
+  { id: "iot", re: /\b(iot|sensors?|metar|weather stations?|nervous system|what's changing|what is changing|iom)\b/ },
 ];
 
 const WALK_RE =
@@ -77,6 +78,7 @@ export const QUERY_EXAMPLES = [
   "walk this street",
   "this is residential",
   "what's growing here",
+  "what's changing here",
   "split this zone",
 ] as const;
 
@@ -188,7 +190,8 @@ export function parseMapQuery(raw: string): MapIntent {
   if (edit && !overlays.includes("zoning")) overlays.push("zoning");
   if (overlays.includes("transit") && !overlays.includes("streets")) overlays.push("streets");
   if (overlays.includes("transit") && !overlays.includes("zoning")) overlays.push("zoning");
-  if (overlays.includes("rail") && !overlays.includes("streets")) overlays.push("streets");
+  if (overlays.includes("iot") && !overlays.includes("zoning")) overlays.push("zoning");
+  if (overlays.includes("iot") && !overlays.includes("transit")) overlays.push("transit");
 
   const country = matchCountry(text);
   const locationText = leftoverLocation(text, zone?.id ?? null);
@@ -239,7 +242,7 @@ export function assembleOverlays(intent: MapIntent): OverlayState {
   }
   if (intent.zoneClass) next.zoning = true;
   if (intent.edit) next.zoning = true;
-  if (next.wildlife || next.livestock || next.plants || next.trails || next.transit) next.zoning = true;
+  if (next.wildlife || next.livestock || next.plants || next.trails || next.transit || next.iot) next.zoning = true;
   if (next.transit || next.rail) next.streets = true;
   return next;
 }

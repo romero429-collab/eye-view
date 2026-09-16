@@ -314,6 +314,10 @@ function buildStyle(): StyleSpecification {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
+      iot: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
     },
     layers: [
       {
@@ -1044,6 +1048,24 @@ function buildStyle(): StyleSpecification {
           "line-opacity": 0.85,
         },
       },
+      {
+        id: "iot",
+        type: "circle",
+        source: "iot",
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 4, 12, 7],
+          "circle-color": [
+            "case",
+            [">=", ["coalesce", ["to-number", ["get", "precip"]], 0], 0.2],
+            "#c45c2a",
+            "#6fbfa8",
+          ],
+          "circle-opacity": 0.9,
+          "circle-stroke-color": "#e7eaed",
+          "circle-stroke-width": 0.7,
+        },
+      },
     ],
   };
 }
@@ -1093,6 +1115,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
   flights: ["flights"],
   alerts: ["alerts"],
   events: ["events"],
+  iot: ["iot"],
 };
 
 const POINT_HIT_LAYERS = [
@@ -1110,6 +1133,7 @@ const POINT_HIT_LAYERS = [
   "quakes",
   "alerts",
   "events",
+  "iot",
 ];
 
 const AREA_HIT_LAYERS = [
@@ -1179,6 +1203,7 @@ function closestFeature(
 
 function layerName(layerId: string, kind: MapObjectKind): string {
   if (layerId.includes("plants") || kind === "plant") return "Plants";
+  if (layerId === "iot" || kind === "sensor") return "IoT";
   if (layerId.includes("wildlife") || kind === "sighting") return "Wild";
   if (layerId.includes("livestock") || kind === "farm" || kind === "fence") return "Domestic";
   if (layerId === "quakes" || kind === "quake") return "Quakes";
@@ -1230,6 +1255,7 @@ function featureToObject(
       "building",
       "address",
       "zone",
+      "sensor",
     ].includes(rawKind)
       ? rawKind
       : layerId === "quakes"
@@ -1240,6 +1266,8 @@ function featureToObject(
             ? "farm"
             : layerId === "otm-plants" || layerId.includes("plants")
               ? "plant"
+            : layerId === "iot"
+              ? "sensor"
             : layerId === "otm-housenumber"
               ? "address"
               : layerId.startsWith("otm-building")
@@ -1444,8 +1472,22 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         : []),
     ];
     const klass = String(zoneHits[0]?.properties?.class ?? "");
-    const countLayer = (id: string) =>
-      map.getLayer(id) ? map.queryRenderedFeatures(box, { layers: [id] }).length : 0;
+    const countLayer = (id: string, area: [[number, number], [number, number]] = box) =>
+      map.getLayer(id) ? map.queryRenderedFeatures(area, { layers: [id] }).length : 0;
+    const maxProp = (id: string, key: string, area: [[number, number], [number, number]] = box) => {
+      if (!map.getLayer(id)) return 0;
+      const feats = map.queryRenderedFeatures(area, { layers: [id] });
+      let best = 0;
+      for (const feat of feats) {
+        const n = Number(feat.properties?.[key] ?? 0);
+        if (Number.isFinite(n) && n > best) best = n;
+      }
+      return best;
+    };
+    const view: [[number, number], [number, number]] = [
+      [0, 0],
+      [map.getCanvas().width, map.getCanvas().height],
+    ];
     return {
       lng: center.lng,
       lat: center.lat,
@@ -1460,6 +1502,10 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       plants: countLayer("plantsLive") + countLayer("otm-plants"),
       events: countLayer("events"),
       alerts: countLayer("alerts"),
+      sensors: countLayer("iot", view),
+      precip: maxProp("iot", "precip", view),
+      temp: maxProp("iot", "temp", view),
+      wind: maxProp("iot", "wind", view),
     };
   };
 
@@ -1940,6 +1986,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       bindLiveLayer("flights", "flight");
       bindLiveLayer("alerts", "alert");
       bindLiveLayer("events", "event");
+      bindLiveLayer("iot", "sensor");
       bindLiveLayer("wildlife", "trail");
       bindLiveLayer("livestock", "trail");
       bindLiveLayer("wildlifeLive", "sighting");
@@ -2292,6 +2339,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       "livestock",
       "plants",
       "health",
+      "iot",
     ] as const;
     const active = kinds.filter((kind) => overlays[kind]);
     if (active.length === 0 && !overlays.rail && !overlays.livestock && !overlays.plots && !overlays.zoning)
@@ -2432,6 +2480,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     overlays.livestock,
     overlays.plants,
     overlays.health,
+    overlays.iot,
     overlays.rail,
     overlays.plots,
     overlays.zoning,

@@ -4,6 +4,7 @@ import type { MapObject } from "./map-types.ts";
 import type { RuleHit, SceneSample } from "./zoning-rules.ts";
 import { resolveZone, type ZonePatch } from "./zone-memory.ts";
 import { perceiveMovement, type TransitMood } from "./transit-sense.ts";
+import { orchestrate, type Consequence } from "./iom.ts";
 
 /** One tick of what the HUD actually sees. This is the contract Kiyoshi's
  *  Reality Integration Layer consumes: look-at, ground as context (never as
@@ -27,6 +28,7 @@ export type PerceptionFrame = {
   rules: Array<{ id: string; effect: string; title: string }>;
   attention: AttentionMap;
   movement: { mood: TransitMood; title: string } | null;
+  consequences: Array<Pick<Consequence, "id" | "cause" | "target" | "action" | "title">>;
 };
 
 export function formatDecimal(lng: number, lat: number): string {
@@ -95,6 +97,13 @@ export function buildPerception(args: {
     rules: rules.map((hit) => ({ id: hit.id, effect: hit.effect, title: hit.title })),
     attention,
     movement,
+    consequences: orchestrate({ scene, overlays, patches }).map((c) => ({
+      id: c.id,
+      cause: c.cause,
+      target: c.target,
+      action: c.action,
+      title: c.title,
+    })),
   };
 }
 
@@ -107,6 +116,7 @@ export function groundOwnsInspector(overlays: OverlayState, zoom: number | null 
       overlays.plants ||
       overlays.quakes ||
       overlays.plots ||
+      overlays.iot ||
       overlays.transit ||
       overlays.flights ||
       (zoom ?? 0) >= 5,

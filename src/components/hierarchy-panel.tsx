@@ -10,6 +10,7 @@ const EFFECT_LABEL: Record<RuleHit["effect"], string> = {
   dim: "Dim",
   prefer: "Prefer",
   queue: "Queued",
+  adapt: "IOM",
 };
 
 type HierarchyPanelProps = {
@@ -32,11 +33,12 @@ export function HierarchyPanel({
   if (hits.length === 0) return null;
   const needScale = hits.some((hit) => hit.id === "need-scale");
   const shownLabel = needScale ? undefined : zoneLabel;
+  const iom = hits.some((hit) => hit.id.startsWith("iom-"));
   return (
     <div className="max-w-[min(100%,18rem)] rounded-[var(--radius-md)] border border-border bg-surface p-2 shadow-[var(--shadow-panel)] md:max-w-56">
       <p className="flex items-center gap-1.5 px-1.5 pt-0.5 pb-1 text-xs font-medium uppercase tracking-label text-subtle">
         <GitBranch className="size-3" strokeWidth={1.75} />
-        Zoning coordinates
+        {iom ? "IOM coordinates" : "Zoning coordinates"}
       </p>
       {shownLabel ? (
         <p className="px-1.5 pb-1.5 font-mono text-xs text-muted">{shownLabel}</p>

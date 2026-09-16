@@ -15,7 +15,8 @@ export type OverlayId =
   | "transit"
   | "flights"
   | "alerts"
-  | "events";
+  | "events"
+  | "iot";
 
 export type OverlayGroup = "map" | "animals" | "live";
 
@@ -149,6 +150,13 @@ export const OVERLAYS: OverlayDef[] = [
     live: true,
     group: "live",
   },
+  {
+    id: "iot",
+    label: "IoT",
+    blurb: "Sensors into the perception layer",
+    live: true,
+    group: "live",
+  },
 ];
 
 export const DEFAULT_OVERLAYS: OverlayState = {
@@ -169,6 +177,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   flights: false,
   alerts: false,
   events: false,
+  iot: false,
 };
 
 export const TILES = {

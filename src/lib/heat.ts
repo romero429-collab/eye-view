@@ -265,6 +265,7 @@ export const OVERLAY_INK: Partial<Record<string, string>> = {
   zoning: "#3aa8b5",
   flights: "#e7eaed",
   transit: "#7ecad4",
+  iot: "#6fbfa8",
   health: "#7ecad4",
   plots: "#7ecad4",
   rail: "#e7eaed",

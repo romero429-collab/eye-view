@@ -23,7 +23,8 @@ export type MapObjectKind =
   | "plot"
   | "building"
   | "address"
-  | "zone";
+  | "zone"
+  | "sensor";
 
 export type MapObject = {
   kind: MapObjectKind;

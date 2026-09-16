@@ -22,6 +22,8 @@ const HINTS: Record<string, string[]> = {
   transit: ["transit", "bus", "route", "movement", "corridor"],
   plots: ["plot", "lot", "address", "parcel"],
   walk: ["walk", "street"],
+  iot: ["iot", "sensor", "changing", "weather"],
+  iom: ["iom", "changing", "adapt"],
   recreation: ["recreation", "park", "pitch"],
   extractive: ["quarry", "landfill", "mine"],
   construction: ["construction"],

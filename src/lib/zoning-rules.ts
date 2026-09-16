@@ -2,10 +2,11 @@ import type { OverlayId, OverlayState } from "./basemaps.ts";
 import { ZONE_SWATCHES, zoneLabel } from "./basemaps.ts";
 import { resolveZone, type ZonePatch } from "./zone-memory.ts";
 import { perceiveMovement } from "./transit-sense.ts";
+import { consequenceToEffect, orchestrate } from "./iom.ts";
 
 export type ZoneClassId = (typeof ZONE_SWATCHES)[number]["id"] | "unknown";
 
-export type RuleEffect = "container" | "avoid" | "snap" | "dim" | "prefer" | "queue";
+export type RuleEffect = "container" | "avoid" | "snap" | "dim" | "prefer" | "queue" | "adapt";
 
 export type RuleHit = {
   id: string;
@@ -30,6 +31,10 @@ export type SceneSample = {
   plants?: number;
   events: number;
   alerts: number;
+  sensors?: number;
+  precip?: number;
+  temp?: number;
+  wind?: number;
 };
 
 /** OpenMapTiles landuse/cover is not in the globe tiles until city/regional zoom. */
@@ -73,7 +78,8 @@ export function coordinateToggle(state: OverlayState, id: OverlayId): OverlaySta
   }
   if (id === "wildlife" || id === "livestock" || id === "plants" || id === "trails") next.zoning = true;
   if (id === "plots") next.zoning = true;
-  if (id === "events" || id === "alerts") next.zoning = true;
+  if (id === "events" || id === "alerts" || id === "iot") next.zoning = true;
+  if (id === "iot") next.metric = false;
   if (id === "zoning" || id === "wildlife" || id === "plants" || id === "quakes") next.metric = false;
   return next;
 }
@@ -299,6 +305,16 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
         local: plantCount > 0,
       });
     }
+  }
+
+  for (const c of orchestrate({ scene, overlays, patches })) {
+    hits.push({
+      id: c.id,
+      effect: consequenceToEffect(c.action),
+      title: c.title,
+      detail: `${c.cause} → ${c.target}. ${c.detail}`,
+      local: true,
+    });
   }
 
   return hits;

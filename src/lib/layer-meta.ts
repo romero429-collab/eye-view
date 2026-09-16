@@ -16,6 +16,7 @@ import {
   Mountain,
   PawPrint,
   Plane,
+  Radio,
   TrainFront,
   TriangleAlert,
   Type,
@@ -108,6 +109,11 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
     icon: Bird,
     usage: "NASA EONET open hazards (storms, wildfires, volcanoes).",
   },
+  iot: {
+    icon: Radio,
+    usage:
+      "IoT into the perception layer: METAR weather stations plus an Open-Meteo node at the look-at. IOM uses precip, wind, and seismic to reroute transit and anticipate wildlife.",
+  },
 };
 
 export const OBJECT_META: Record<MapObjectKind, LayerMeta> = {
@@ -141,4 +147,5 @@ export const OBJECT_META: Record<MapObjectKind, LayerMeta> = {
     usage:
       "An OSM land-use zone. Legal zoning ordinances are municipal; this is the worldwide land-use proxy.",
   },
+  sensor: LAYER_META.iot,
 };

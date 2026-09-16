@@ -16,7 +16,8 @@ export type LiveKind =
   | "plots"
   | "zoning"
   | "lookup"
-  | "geocode";
+  | "geocode"
+  | "iot";
 
 export type LiveQuery = {
   kind: LiveKind;
@@ -442,6 +443,103 @@ async function plantFeatures(q: LiveQuery): Promise<FeatureCollection> {
     gbifOccurrences(3073, q, 20, { kind: "plant", fallback: "Grass" }),
   ]);
   return { type: "FeatureCollection", features: [...vascular, ...grasses] };
+}
+
+type MetarRow = {
+  lat?: number;
+  lon?: number;
+  icaoId?: string;
+  name?: string;
+  temp?: number;
+  wspd?: number;
+  precip?: number;
+  pcpn?: number;
+  rawOb?: string;
+  wxString?: string;
+};
+
+type OpenMeteoCurrent = {
+  current?: {
+    temperature_2m?: number;
+    precipitation?: number;
+    wind_speed_10m?: number;
+    weather_code?: number;
+  };
+};
+
+async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  const lat = q.lat ?? (q.south != null && q.north != null ? (q.south + q.north) / 2 : null);
+  const lng = q.lng ?? (q.west != null && q.east != null ? (q.west + q.east) / 2 : null);
+  if (lat == null || lng == null) return empty();
+  const west = q.west ?? lng - 0.6;
+  const south = q.south ?? lat - 0.4;
+  const east = q.east ?? lng + 0.6;
+  const north = q.north ?? lat + 0.4;
+  const [metar, om] = await Promise.all([
+    fetchJson(
+      `https://aviationweather.gov/api/data/metar?format=json&bbox=${south},${west},${north},${east}`,
+      8000,
+    ),
+    fetchJson(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=temperature_2m,precipitation,wind_speed_10m,weather_code`,
+      8000,
+    ),
+  ]);
+  const features: Feature[] = [];
+  const rows = Array.isArray(metar) ? (metar as MetarRow[]) : [];
+  for (const row of rows.slice(0, 40)) {
+    if (row.lat == null || row.lon == null) continue;
+    const wx = `${row.wxString ?? ""} ${row.rawOb ?? ""}`;
+    const raining = /\b(RA|TS|SHRA|DZ)\b/.test(wx);
+    const precipRaw = Number(row.precip ?? row.pcpn ?? 0);
+    const precip = raining ? Math.max(precipRaw, 0.5) : Number.isFinite(precipRaw) ? precipRaw : 0;
+    const temp = Number(row.temp);
+    const wind = Number(row.wspd);
+    const title = row.icaoId || row.name || "METAR";
+    features.push(
+      point(row.lon, row.lat, {
+        kind: "sensor",
+        title,
+        detail: [row.name, row.wxString, row.rawOb?.slice(0, 48)].filter(Boolean).join(" · "),
+        source: "AviationWeather METAR",
+        precip: Number.isFinite(precip) ? precip : 0,
+        temp: Number.isFinite(temp) ? temp : null,
+        wind: Number.isFinite(wind) ? wind : null,
+        facts: JSON.stringify(
+          [
+            Number.isFinite(temp) ? { label: "Temp °C", value: `${temp.toFixed(1)}` } : null,
+            Number.isFinite(wind) ? { label: "Wind kt", value: String(Math.round(wind)) } : null,
+            { label: "Kind", value: "Weather station" },
+          ].filter(Boolean),
+        ),
+      }),
+    );
+  }
+  const stationWet = features.some((f) => Number(f.properties?.precip ?? 0) >= 0.2);
+  const cur = (om as OpenMeteoCurrent | null)?.current ?? {};
+  const nodePrecip = stationWet ? Math.max(Number(cur.precipitation ?? 0), 0.5) : (cur.precipitation ?? 0);
+  features.push(
+    point(lng, lat, {
+      kind: "sensor",
+      title: "Look-at climate node",
+      detail: stationWet
+        ? "Nearby station reports precipitation. IOM treats this district as wet."
+        : "Open-Meteo current conditions at the crosshair — IOM's local nerve.",
+      source: "Open-Meteo",
+      precip: nodePrecip,
+      temp: cur.temperature_2m ?? null,
+      wind: cur.wind_speed_10m ?? null,
+      facts: JSON.stringify(
+        [
+          cur.temperature_2m != null ? { label: "Temp °C", value: String(cur.temperature_2m) } : null,
+          cur.precipitation != null ? { label: "Precip mm", value: String(cur.precipitation) } : null,
+          cur.wind_speed_10m != null ? { label: "Wind km/h", value: String(cur.wind_speed_10m) } : null,
+          { label: "Kind", value: "Climate node" },
+        ].filter(Boolean),
+      ),
+    }),
+  );
+  return { type: "FeatureCollection", features };
 }
 
 let healthCache: { at: number; data: FeatureCollection } | null = null;
@@ -1125,6 +1223,8 @@ export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
       return lookupPlot(q);
     case "geocode":
       return geocodePlaces(q);
+    case "iot":
+      return iotFeatures(q);
     default:
       return empty();
   }

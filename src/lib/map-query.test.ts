@@ -12,6 +12,14 @@ describe("parseMapQuery", () => {
     assert.ok(intent.overlays.includes("streets"));
   });
 
+  it("plugs IoT into IOM instead of treating sensors as a separate map", () => {
+    const intent = parseMapQuery("what's changing here");
+    assert.equal(intent.here, true);
+    assert.ok(intent.overlays.includes("iot"));
+    assert.ok(intent.overlays.includes("zoning"));
+    assert.ok(intent.overlays.includes("transit"));
+  });
+
   it("reads animal terrain at the look-at", () => {
     const intent = parseMapQuery("what's the terrain like here for animals");
     assert.equal(intent.kind, "ask");

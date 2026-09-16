@@ -15,6 +15,7 @@ const KINDS = new Set<LiveKind>([
   "zoning",
   "lookup",
   "geocode",
+  "iot",
 ]);
 
 export const Route = createFileRoute("/api/live")({

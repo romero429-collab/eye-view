@@ -26,6 +26,7 @@ type SceneBits = {
   events?: number;
   alerts?: number;
   quakes?: number;
+  precip?: number;
 };
 
 export type CorridorStat = { flowing: number; blocked: number; t: number };
@@ -110,7 +111,8 @@ export function perceiveMovement(args: {
   const hazard =
     (overlays.events && (scene?.events ?? 0) > 0) ||
     (overlays.alerts && (scene?.alerts ?? 0) > 0) ||
-    (overlays.quakes && (scene?.quakes ?? 0) > 0);
+    (overlays.quakes && (scene?.quakes ?? 0) > 0) ||
+    ((overlays.iot || overlays.radar) && (scene?.precip ?? 0) >= 0.2);
   const paper = isPaperRoute(book, klass ?? null);
   const fought = Boolean(klass && TRANSIT_FIGHTS.has(klass));
   const served = Boolean(klass && TRANSIT_SERVES.has(klass));
