@@ -1,0 +1,29 @@
+import type { ComponentProps } from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+
+const badgeVariants = cva(
+  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium tracking-wide",
+  {
+    variants: {
+      variant: {
+        default: "border-transparent bg-primary text-primary-fg",
+        outline: "border-border bg-transparent text-muted",
+        muted: "border-transparent bg-bg-warm text-muted",
+      },
+    },
+    defaultVariants: { variant: "muted" },
+  },
+);
+
+function Badge({
+  className,
+  variant,
+  ...props
+}: ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+  return (
+    <span className={cn(badgeVariants({ variant }), className)} {...props} />
+  );
+}
+
+export { Badge, badgeVariants };

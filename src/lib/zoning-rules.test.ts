@@ -1,0 +1,80 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { DEFAULT_OVERLAYS } from "./basemaps.ts";
+import {
+  coordinateToggle,
+  evaluateRules,
+  radarDimFactor,
+  zoneClassOf,
+} from "./zoning-rules.ts";
+
+describe("zoneClassOf", () => {
+  it("maps OSM landuse and landcover classes onto HUD swatches", () => {
+    assert.equal(zoneClassOf("garages"), "industrial");
+    assert.equal(zoneClassOf("hospital"), "civic");
+    assert.equal(zoneClassOf("wood"), "park");
+    assert.equal(zoneClassOf("farmland"), "farmland");
+    assert.equal(zoneClassOf("nope"), "unknown");
+  });
+});
+
+describe("coordinateToggle", () => {
+  it("pulls streets when transit comes on, and zoning when wildlife does", () => {
+    const withTransit = coordinateToggle(DEFAULT_OVERLAYS, "transit");
+    assert.equal(withTransit.transit, true);
+    assert.equal(withTransit.streets, true);
+    const withWild = coordinateToggle(DEFAULT_OVERLAYS, "wildlife");
+    assert.equal(withWild.wildlife, true);
+    assert.equal(withWild.zoning, true);
+    assert.equal(withWild.metric, false);
+  });
+});
+
+describe("evaluateRules", () => {
+  it("treats zoning as the container and flags wildlife in industrial", () => {
+    const hits = evaluateRules({
+      overlays: { ...DEFAULT_OVERLAYS, wildlife: true, zoning: true, transit: true, streets: true },
+      scene: {
+        lng: -106.65,
+        lat: 35.08,
+        zoom: 14,
+        bearing: 0,
+        pitch: 0,
+        zoneClass: "industrial",
+        zoneLabel: "Industrial",
+        quakes: 0,
+        transit: 2,
+        wildlife: 1,
+      },
+    });
+    assert.ok(hits.some((h) => h.id === "container"));
+    assert.ok(hits.some((h) => h.id === "wild-industry" && h.effect === "avoid"));
+    assert.ok(hits.some((h) => h.id === "transit-snap"));
+  });
+
+  it("asks you to drop closer instead of claiming an empty district contains the view", () => {
+    const hits = evaluateRules({
+      overlays: { ...DEFAULT_OVERLAYS, wildlife: true, zoning: true, quakes: true },
+      scene: {
+        lng: -104.95,
+        lat: 34.75,
+        zoom: 6.2,
+        bearing: 0,
+        pitch: 0,
+        zoneClass: null,
+        zoneLabel: "No zone in view",
+        quakes: 0,
+        transit: 0,
+        wildlife: 1,
+      },
+    });
+    assert.ok(hits.some((h) => h.id === "need-scale"));
+    assert.equal(hits.some((h) => h.id === "container"), false);
+    assert.ok(!hits.some((h) => h.title.toLowerCase().includes("no zone in view contains")));
+  });
+
+  it("dims live layers when radar is on", () => {
+    assert.equal(radarDimFactor({ ...DEFAULT_OVERLAYS, radar: true }), 0.42);
+    assert.equal(radarDimFactor(DEFAULT_OVERLAYS), 1);
+  });
+});
