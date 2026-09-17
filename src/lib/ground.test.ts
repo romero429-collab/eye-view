@@ -24,9 +24,11 @@ describe("ground GIS", () => {
         },
       ],
     });
-    assert.equal(stems.features.length, 1);
-    assert.equal(stems.features[0]?.geometry.type, "Polygon");
-    assert.ok(Number(stems.features[0]?.properties?.height) >= 10);
+    assert.ok(stems.features.length >= 2);
+    assert.ok(stems.features.every((f) => f.geometry.type === "Polygon"));
+    assert.ok(stems.features.some((f) => f.properties?.kind === "trunk"));
+    assert.ok(stems.features.some((f) => f.properties?.kind === "crown"));
+    assert.ok(Number(stems.features.find((f) => f.properties?.kind === "crown")?.properties?.height) >= 6);
   });
 
   it("exaggerates terrain more in walk mode", () => {

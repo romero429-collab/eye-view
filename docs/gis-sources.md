@@ -87,7 +87,7 @@ Ask `lidar here` in Tokyo or Manaus — you still get ICESat-2 tracks, GEDI cano
 
 NDVI is `(near-infrared − red) / (near-infrared + red)`. Live canopy reflects NIR strongly, so dense plants read bright/green on the NASA MODIS 8-day composite; pavement, water, and bare rock read dark. It is a **structure metric**, not a pretty tint. Click the plants heat or ask `what's growing here`.
 
-Ask `what rocks are here`, `what bugs are here`, `what's growing here`, or `walk this street`. Walk stands buildings, forest canopy, and individual tree stems up on the DEM.
+Walk stands buildings, forest canopy, and **seeded low-poly trees/rocks** on the DEM at the occurrence's lng/lat. Same coordinate always grows the same tree. Ask `what rocks are here`, `what bugs are here`, `what's growing here`, or `walk this street`.
 
 ## OpenStreetMap stack
 

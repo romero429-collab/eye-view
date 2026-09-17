@@ -64,7 +64,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   plants: {
     icon: Leaf,
     usage:
-      "Vegetation as GIS, not scenery: NASA GIBS MODIS NDVI, GBIF Plantae density, iNaturalist observations, OSM trees/woods/orchards/protected areas, and hydro. Click a cell for a named plant. Animals cluster on it; paved commercial with native cover proposes a reclass.",
+      "Vegetation as GIS, not scenery: NASA GIBS MODIS NDVI, GBIF Plantae, iNaturalist, OSM woods. Walk mode stands seeded low-poly trunks and canopy on the DEM at each occurrence. Click a cell or a tree.",
   },
   rail: {
     icon: TrainFront,

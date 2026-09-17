@@ -52,6 +52,7 @@ import {
 import { cn } from "@/lib/utils";
 import { destination, wrapBearing } from "@/lib/spatial";
 import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground";
+import { assetsFromGround } from "@/lib/proc-assets";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
   densityObject,
@@ -287,6 +288,10 @@ function buildStyle(): StyleSpecification {
         data: { type: "FeatureCollection", features: [] },
       },
       trees3d: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      rocks3d: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
@@ -923,9 +928,25 @@ function buildStyle(): StyleSpecification {
         minzoom: 15,
         layout: { visibility: "none" },
         paint: {
-          "fill-extrusion-color": "#1e4a32",
+          "fill-extrusion-color": ["coalesce", ["get", "color"], "#1e4a32"],
           "fill-extrusion-height": ["coalesce", ["get", "height"], 11],
-          "fill-extrusion-opacity": 0.82,
+          "fill-extrusion-base": ["coalesce", ["get", "base"], 0],
+          "fill-extrusion-opacity": 0.9,
+          "fill-extrusion-vertical-gradient": true,
+        },
+      },
+      {
+        id: "rocks3d",
+        type: "fill-extrusion",
+        source: "rocks3d",
+        minzoom: 14,
+        layout: { visibility: "none" },
+        paint: {
+          "fill-extrusion-color": ["coalesce", ["get", "color"], "#7a6458"],
+          "fill-extrusion-height": ["coalesce", ["get", "height"], 1.4],
+          "fill-extrusion-base": 0,
+          "fill-extrusion-opacity": 0.92,
+          "fill-extrusion-vertical-gradient": true,
         },
       },
       {
@@ -1269,6 +1290,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "osm-fill",
   ],
   plants: ["ndvi", "gbifPlants", "plants-heat", "plantsLive", "otm-plants", "otm-water", "otm-canopy-3d", "trees3d"],
+  ground: ["gedi", "geology", "ditches", "otm-waterway", "rocks3d"],
   rail: ["otm-rail", "otm-rail-hatch", "otm-station", "osm-line", "osm-point"],
   plots: [
     "parcels",
@@ -1292,7 +1314,6 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "memory-line",
     "memory-queue",
   ],
-  ground: ["gedi", "geology", "ditches", "otm-waterway"],
   bugs: ["gbifBugs", "bugs-heat", "bugsLive"],
   health: ["health"],
   radar: ["radar"],
@@ -1344,6 +1365,7 @@ const AREA_HIT_LAYERS = [
   "otm-water",
   "otm-canopy-3d",
   "trees3d",
+  "rocks3d",
   "otm-waterway",
   "wildlife",
   "livestock",
@@ -1397,7 +1419,7 @@ function closestFeature(
 function layerName(layerId: string, kind: MapObjectKind): string {
   if (layerId.includes("plants") || kind === "plant" || layerId === "otm-water" || layerId === "ndvi" || layerId === "trees3d" || layerId === "otm-canopy-3d") return "Plants";
   if (layerId.includes("bugs") || kind === "bug") return "Bugs";
-  if (layerId === "geology" || layerId === "ditches" || layerId === "otm-waterway" || kind === "rock" || kind === "ditch") return "Ground";
+  if (layerId === "geology" || layerId === "ditches" || layerId === "otm-waterway" || layerId === "rocks3d" || kind === "rock" || kind === "ditch") return "Ground";
   if (layerId === "iot" || kind === "sensor") return "IoT";
   if (layerId.includes("wildlife") || kind === "sighting") return "Wild";
   if (layerId.includes("livestock") || kind === "farm" || kind === "fence") return "Domestic";
@@ -1466,7 +1488,7 @@ function featureToObject(
               ? "plant"
             : layerId.includes("bugs")
               ? "bug"
-            : layerId === "geology"
+            : layerId === "geology" || layerId === "rocks3d"
               ? "rock"
             : layerId === "ditches" || layerId === "otm-waterway"
               ? "ditch"
@@ -2500,6 +2522,13 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         map.setLayoutProperty(id, "visibility", walkStructure ? "visible" : "none");
       }
     }
+    if (map.getLayer("rocks3d")) {
+      map.setLayoutProperty(
+        "rocks3d",
+        "visibility",
+        walking || overlays.ground ? "visible" : "none",
+      );
+    }
     if (map.getLayer("otm-waterway")) {
       map.setLayoutProperty(
         "otm-waterway",
@@ -2708,6 +2737,9 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
                 type: "FeatureCollection",
                 features: ditchFeats,
               });
+              (map.getSource("rocks3d") as GeoJSONSource | undefined)?.setData(
+                assetsFromGround({ type: "FeatureCollection", features: rockFeats }),
+              );
               notes.push(`${data.features.length} ground`);
               return;
             }

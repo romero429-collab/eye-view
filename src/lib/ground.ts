@@ -1,5 +1,5 @@
-import type { Feature, FeatureCollection } from "geojson";
-import { stemPolygon } from "./spatial.ts";
+import type { FeatureCollection } from "geojson";
+import { assetsFromPlants } from "./proc-assets.ts";
 
 /** NDVI — Normalized Difference Vegetation Index.
  *  (NIR − red) / (NIR + red). Live canopy reflects near-infrared strongly,
@@ -66,29 +66,7 @@ export function lidarCoverageLine(args: {
 }
 
 export function stemsFromPlants(fc: FeatureCollection): FeatureCollection {
-  const features: Feature[] = [];
-  for (const feat of fc.features) {
-    if (feat.geometry?.type !== "Point") continue;
-    const [lng, lat] = feat.geometry.coordinates;
-    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
-    const title = String(feat.properties?.title ?? "Tree");
-    const klass = String(feat.properties?.class ?? feat.properties?.kind ?? "");
-    const text = `${title} ${klass}`.toLowerCase();
-    if (/grass|crop|wetland|water|farmland|meadow/.test(text) && !/tree|wood|forest|oak|pine|elm|cedar|ash|maple/.test(text)) {
-      continue;
-    }
-    const height = /wood|forest|pine|oak|elm|cedar/.test(text) ? 16 : /orchard|vineyard/.test(text) ? 7 : 11;
-    features.push(
-      stemPolygon(lng, lat, height >= 14 ? 4.2 : 3.2, {
-        ...((feat.properties ?? {}) as Record<string, string | number | boolean | null>),
-        kind: "plant",
-        title,
-        height,
-      }),
-    );
-    if (features.length >= 180) break;
-  }
-  return { type: "FeatureCollection", features };
+  return assetsFromPlants(fc);
 }
 
 export function terrainExaggeration(walking: boolean): number {
