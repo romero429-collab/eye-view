@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { NDVI_EXPLAIN, stemsFromPlants, terrainExaggeration } from "./ground.ts";
+import { NDVI_EXPLAIN, lidarCoverageLine, pickElevation, stemsFromPlants, terrainExaggeration } from "./ground.ts";
 
 describe("ground GIS", () => {
   it("explains NDVI as a greenness metric, not a tint", () => {
@@ -31,5 +31,12 @@ describe("ground GIS", () => {
 
   it("exaggerates terrain more in walk mode", () => {
     assert.ok(terrainExaggeration(true) > terrainExaggeration(false));
+  });
+
+  it("never treats a missing USGS answer as no height", () => {
+    const tokyo = pickElevation(0, 12);
+    assert.equal(tokyo?.meters, 12);
+    assert.equal(tokyo?.source, "Open-Meteo DEM");
+    assert.match(lidarCoverageLine({ icesat: [315] }), /ICESat-2 tracks 315/);
   });
 });

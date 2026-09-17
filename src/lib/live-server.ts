@@ -4,7 +4,6 @@ const GtfsRealtimeBindings = (GtfsMod as { default?: typeof GtfsMod }).default ?
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import {
   WILDLIFE_TAXA,
-  lidarSummary,
   occurrenceFacts,
   occurrenceTitle,
   photoUrl,
@@ -12,6 +11,7 @@ import {
   type GbifOccurrence,
   type GbifVernacular,
 } from "./gbif.ts";
+import { lidarCoverageLine, pickElevation, inUsgsCoverage } from "./ground.ts";
 
 export type LiveKind =
   | "transit"
@@ -622,10 +622,12 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
       `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=temperature_2m,precipitation,wind_speed_10m,weather_code`,
       8000,
     ),
-    fetchJson(
-      `https://epqs.nationalmap.gov/v1/json?x=${lng.toFixed(5)}&y=${lat.toFixed(5)}&wkid=4326&units=Meters`,
-      6000,
-    ),
+    inUsgsCoverage(lat, lng)
+      ? fetchJson(
+          `https://epqs.nationalmap.gov/v1/json?x=${lng.toFixed(5)}&y=${lat.toFixed(5)}&wkid=4326&units=Meters`,
+          5000,
+        )
+      : Promise.resolve(null),
     fetchJson(
       `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=us_aqi,pm2_5`,
       6000,
@@ -665,7 +667,11 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
   const cur = (om as OpenMeteoCurrent | null)?.current ?? {};
   const omElev = Number((om as OpenMeteoCurrent | null)?.elevation);
   const usgsElev = Number((elev as UsgsElev | null)?.value);
-  const elevM = Number.isFinite(usgsElev) ? usgsElev : Number.isFinite(omElev) ? omElev : null;
+  const picked = pickElevation(
+    Number.isFinite(usgsElev) ? usgsElev : null,
+    Number.isFinite(omElev) ? omElev : null,
+  );
+  const elevM = picked?.meters ?? null;
   const aqiVal = Number((aqi as AqiCurrent | null)?.current?.us_aqi);
   const pm25 = Number((aqi as AqiCurrent | null)?.current?.pm2_5);
   const nodePrecip = stationWet ? Math.max(Number(cur.precipitation ?? 0), 0.5) : (cur.precipitation ?? 0);
@@ -675,8 +681,8 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
       title: "Look-at climate node",
       detail: stationWet
         ? "Nearby station reports precipitation. IOM treats this district as wet."
-        : "Open-Meteo, USGS elevation, and air quality at the crosshair — IOM's local nerve.",
-      source: "Open-Meteo · USGS 3DEP · Open-Meteo Air Quality",
+        : "Climate, height, and air at the crosshair — worldwide, not a US-only node.",
+      source: `Open-Meteo · ${picked?.source ?? "DEM"} · Open-Meteo Air Quality`,
       precip: nodePrecip,
       temp: cur.temperature_2m ?? null,
       wind: cur.wind_speed_10m ?? null,
@@ -688,6 +694,7 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
           cur.precipitation != null ? { label: "Precip mm", value: String(cur.precipitation) } : null,
           cur.wind_speed_10m != null ? { label: "Wind km/h", value: String(cur.wind_speed_10m) } : null,
           elevM != null ? { label: "Elev m", value: String(Math.round(elevM)) } : null,
+          picked ? { label: "Height src", value: picked.source } : null,
           Number.isFinite(aqiVal) ? { label: "US AQI", value: String(Math.round(aqiVal)) } : null,
           Number.isFinite(pm25) ? { label: "PM2.5", value: `${pm25.toFixed(1)} µg/m³` } : null,
           { label: "Kind", value: "Climate node" },
@@ -1370,7 +1377,7 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
   const lat = q.lat ?? (q.south != null && q.north != null ? (q.south + q.north) / 2 : null);
   const lng = q.lng ?? (q.west != null && q.east != null ? (q.west + q.east) / 2 : null);
   if (lat == null || lng == null) return empty();
-  const [macro, soil, elev, osm, lidar] = await Promise.all([
+  const [macro, soil, usgsElevRaw, omElevRaw, osm, lidar] = await Promise.all([
     fetchJson(
       `https://macrostrat.org/api/v2/geologic_units/map?lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}`,
       8000,
@@ -1379,8 +1386,14 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
       `https://rest.isric.org/soilgrids/v2.0/properties/query?lon=${lng.toFixed(4)}&lat=${lat.toFixed(4)}&property=sand&property=clay&property=silt&depth=0-5cm&value=mean`,
       8000,
     ),
+    inUsgsCoverage(lat, lng)
+      ? fetchJson(
+          `https://epqs.nationalmap.gov/v1/json?x=${lng.toFixed(5)}&y=${lat.toFixed(5)}&wkid=4326&units=Meters`,
+          5000,
+        )
+      : Promise.resolve(null),
     fetchJson(
-      `https://epqs.nationalmap.gov/v1/json?x=${lng.toFixed(5)}&y=${lat.toFixed(5)}&wkid=4326&units=Meters`,
+      `https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}`,
       6000,
     ),
     osmGroundFeatures(q),
@@ -1388,7 +1401,15 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
   ]);
   const features: Feature[] = [...osm];
   const units = ((macro as { success?: { data?: MacroUnit[] } } | null)?.success?.data ?? []).slice(0, 3);
-  const elevM = Number((elev as { value?: string | number } | null)?.value);
+  const omElevVal = Array.isArray((omElevRaw as { elevation?: number[] } | null)?.elevation)
+    ? Number((omElevRaw as { elevation: number[] }).elevation[0])
+    : Number((omElevRaw as { elevation?: number } | null)?.elevation);
+  const usgsElevVal = Number((usgsElevRaw as { value?: string | number } | null)?.value);
+  const picked = pickElevation(
+    Number.isFinite(usgsElevVal) ? usgsElevVal : null,
+    Number.isFinite(omElevVal) ? omElevVal : null,
+  );
+  const elevM = picked?.meters ?? NaN;
   const layers = (soil as SoilVal | null)?.properties?.layers ?? [];
   const soilBits: Array<{ label: string; value: string }> = [];
   for (const layer of layers) {
@@ -1397,20 +1418,25 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
       soilBits.push({ label: layer.name, value: `${Math.round(mean)}` });
     }
   }
-  if (units[0] || Number.isFinite(elevM) || soilBits.length || lidar) {
+  const lidarLine = lidar
+    ? lidarCoverageLine({
+        workunit: lidar.workunit,
+        ql: lidar.ql,
+        gsd: lidar.gsd,
+        points: lidar.points,
+        year: lidar.year,
+        ept: lidar.ept,
+        icesat: lidar.icesat,
+      })
+    : null;
+  if (units[0] || Number.isFinite(elevM) || soilBits.length || lidarLine) {
     const top = units[0];
-    const title = lidar?.workunit ? `Lidar · ${lidar.workunit}` : top?.name || "Ground at look-at";
+    const title = lidar?.workunit
+      ? `Lidar · ${lidar.workunit}`
+      : lidar?.icesat?.length
+        ? `Lidar · ICESat-2`
+        : top?.name || "Ground at look-at";
     const lith = top?.lith || "unspecified lithology";
-    const lidarLine = lidar
-      ? lidarSummary({
-          workunit: lidar.workunit,
-          ql: lidar.ql,
-          gsd: lidar.gsd,
-          points: lidar.points,
-          year: lidar.year,
-          ept: lidar.ept,
-        })
-      : null;
     features.unshift(
       point(lng, lat, {
         kind: "rock",
@@ -1418,20 +1444,21 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
         detail: [lidarLine, lith, top?.best_int_name || top?.t_int_name, Number.isFinite(elevM) ? `${Math.round(elevM)} m` : null]
           .filter(Boolean)
           .join(" · "),
-        source: "USGS 3DEP LPC · NASA GEDI · Macrostrat · SoilGrids",
+        source: "NASA GEDI · ICESat-2 · Open-Meteo DEM · USGS 3DEP · Macrostrat · SoilGrids",
         elev: Number.isFinite(elevM) ? elevM : null,
         facts: JSON.stringify(
           [
             { label: "Layer", value: "Ground" },
             lidarLine ? { label: "Lidar", value: lidarLine } : null,
             lidar?.project ? { label: "Project", value: lidar.project } : null,
+            picked ? { label: "Elev m", value: `${Math.round(picked.meters)}` } : null,
+            picked ? { label: "Height src", value: picked.source } : null,
             top?.lith ? { label: "Lithology", value: top.lith } : null,
             top?.best_int_name ? { label: "Age", value: top.best_int_name } : null,
             top?.descrip ? { label: "Note", value: String(top.descrip).slice(0, 140) } : null,
-            Number.isFinite(elevM) ? { label: "Elev m", value: String(Math.round(elevM)) } : null,
             ...soilBits.map((b) => ({ label: `Soil ${b.label}`, value: b.value })),
-            { label: "Canopy", value: "NASA GEDI L3 RH100 (spaceborne lidar)" },
-            { label: "DEM", value: "USGS 3DEP + Mapzen terrarium" },
+            { label: "Canopy", value: "NASA GEDI L3 RH100 (global spaceborne lidar)" },
+            { label: "DEM", value: "Open-Meteo worldwide · Mapzen terrarium · 3DEP where it answers" },
           ].filter(Boolean),
         ),
       }),
@@ -1441,13 +1468,14 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
 }
 
 type LidarHit = {
-  workunit: string;
+  workunit: string | null;
   project: string | null;
   ql: string | null;
   gsd: number | null;
   year: number | null;
   points: number | null;
   ept: boolean;
+  icesat: number[];
 };
 
 type UsgsIndex = {
@@ -1463,30 +1491,51 @@ type UsgsIndex = {
   }>;
 };
 
-async function lidarInventory(lat: number, lng: number): Promise<LidarHit | null> {
+async function icesatTracks(lat: number, lng: number): Promise<number[]> {
+  const pad = 0.18;
   const data = (await fetchJson(
-    `https://index.nationalmap.gov/arcgis/rest/services/3DEPElevationIndex/MapServer/8/query?geometry=${lng},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=workunit,project,ql,dem_gsd_meters,collect_end,lpc_category&returnGeometry=false&f=json`,
+    `https://openaltimetry.earthdatacloud.nasa.gov/data/api/icesat2/getTracks?minx=${(lng - pad).toFixed(4)}&miny=${(lat - pad).toFixed(4)}&maxx=${(lng + pad).toFixed(4)}&maxy=${(lat + pad).toFixed(4)}&outputFormat=json`,
     8000,
-  )) as UsgsIndex | null;
-  const rows = (data?.features ?? [])
+  )) as { output?: { track?: number[] } } | null;
+  return (data?.output?.track ?? []).filter((n) => Number.isFinite(n));
+}
+
+async function lidarInventory(lat: number, lng: number): Promise<LidarHit | null> {
+  const [index, icesat] = await Promise.all([
+    fetchJson(
+      `https://index.nationalmap.gov/arcgis/rest/services/3DEPElevationIndex/MapServer/8/query?geometry=${lng},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=workunit,project,ql,dem_gsd_meters,collect_end,lpc_category&returnGeometry=false&f=json`,
+      7000,
+    ) as Promise<UsgsIndex | null>,
+    icesatTracks(lat, lng),
+  ]);
+  const rows = (index?.features ?? [])
     .map((f) => f.attributes)
     .filter((a): a is NonNullable<typeof a> => Boolean(a?.workunit))
     .sort((a, b) => Number(b.collect_end ?? 0) - Number(a.collect_end ?? 0));
   const best = rows.find((r) => /meet/i.test(r.lpc_category ?? "")) ?? rows[0];
-  if (!best?.workunit) return null;
-  const year = best.collect_end ? new Date(best.collect_end).getUTCFullYear() : null;
-  const ept = (await fetchJson(
-    `https://s3-us-west-2.amazonaws.com/usgs-lidar-public/${encodeURIComponent(best.workunit)}/ept.json`,
-    5000,
-  )) as { points?: number } | null;
+  if (!best?.workunit && icesat.length === 0) return null;
+  let points: number | null = null;
+  let ept = false;
+  if (best?.workunit) {
+    const cloud = (await fetchJson(
+      `https://s3-us-west-2.amazonaws.com/usgs-lidar-public/${encodeURIComponent(best.workunit)}/ept.json`,
+      5000,
+    )) as { points?: number } | null;
+    if (cloud) {
+      ept = true;
+      points = Number.isFinite(Number(cloud.points)) ? Number(cloud.points) : null;
+    }
+  }
+  const year = best?.collect_end ? new Date(best.collect_end).getUTCFullYear() : null;
   return {
-    workunit: best.workunit,
-    project: best.project ?? null,
-    ql: best.ql ?? null,
-    gsd: Number.isFinite(Number(best.dem_gsd_meters)) ? Number(best.dem_gsd_meters) : null,
+    workunit: best?.workunit ?? null,
+    project: best?.project ?? null,
+    ql: best?.ql ?? null,
+    gsd: Number.isFinite(Number(best?.dem_gsd_meters)) ? Number(best?.dem_gsd_meters) : null,
     year: Number.isFinite(year) ? year : null,
-    points: Number.isFinite(Number(ept?.points)) ? Number(ept?.points) : null,
-    ept: Boolean(ept && (ept.points || ept)),
+    points,
+    ept,
+    icesat,
   };
 }
 

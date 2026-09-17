@@ -72,9 +72,16 @@ There is no free worldwide 3DEP XYZ terrain-RGB. What we can actually drape:
 
 ## Lidar (point clouds vs canopy)
 
-Airborne USGS 3DEP lidar for Albuquerque is real: workunit `NM_MRCOG_B1_2018` (QL2, ~0.6 m, 14 billion points in EPT) plus the 2010 legacy cloud. The HUD **inventories** that cloud (workunit, quality, year, point count). It does not stream LAS/LAZ — a browser globe cannot hold 10¹⁰ points.
+Coverage is **Earth**, not a US demo:
 
-Canopy that *does* drape: NASA **GEDI L3 RH100** (ISS spaceborne lidar, ~1 km). RH100 is the height where the full laser return has come back — a canopy-top metric, not a stem model. Ask `lidar here`.
+| Where | Source | Accuracy |
+| --- | --- | --- |
+| Global land | NASA GEDI L3 RH100 tiles | Spaceborne lidar canopy (~1 km wash) |
+| Global land | ICESat-2 OpenAltimetry tracks at the look-at | Photon lidar ground tracks |
+| Global, including poles and ocean | Open-Meteo DEM + Mapzen terrarium | Height in meters; walk hills |
+| CONUS where a workunit exists | USGS 3DEP LPC + EPT | Meter-class airborne; inventoried, not streamed |
+
+Ask `lidar here` in Tokyo or Manaus — you still get ICESat-2 tracks, GEDI canopy, and a height. The HUD never teleports the walk to Albuquerque.
 
 ## NDVI (greenness)
 

@@ -101,7 +101,7 @@ export function HierarchyPanel({
         <div className="flex flex-col gap-1 px-1.5 pt-2 pb-0.5">
           {onDropIn ? (
             <Button type="button" size="sm" className="w-full" onClick={onDropIn}>
-              Drop into Albuquerque
+              Drop in here
             </Button>
           ) : null}
           {onWalk ? (

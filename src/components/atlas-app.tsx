@@ -21,7 +21,7 @@ import { COUNTRIES, lookupCountry } from "@/lib/countries";
 import { type MetricId } from "@/lib/metrics";
 import type { GlobeRotation, HoverInfo, MapObject, MapTransform, ViewMode } from "@/lib/map-types";
 import { HOME_ROTATION } from "@/lib/map-types";
-import { altitudeFromZoom, DEFAULT_OVERLAYS, DISTRICT_SPOTS, DISTRICT_VIEW, HOME_VIEW, type OverlayId } from "@/lib/basemaps";
+import { altitudeFromZoom, DEFAULT_OVERLAYS, DISTRICT_VIEW, HOME_VIEW, type OverlayId } from "@/lib/basemaps";
 import { assembleOverlays, type MapIntent, QUERY_EXAMPLES } from "@/lib/map-query";
 import { coordinateToggle, evaluateRules, needsDistrictScale, type SceneSample } from "@/lib/zoning-rules";
 import {
@@ -243,9 +243,7 @@ export function AtlasApp() {
           setViewMode("atlas");
           window.setTimeout(() => {
             mapRef.current?.dropToDistricts(next.zoneClass);
-            const spot =
-              (next.zoneClass && DISTRICT_SPOTS[next.zoneClass]) || DISTRICT_VIEW;
-            run(spot.lng, spot.lat);
+            if (scene) run(scene.lng, scene.lat);
           }, 320);
         } else if (scene) {
           run(scene.lng, scene.lat);

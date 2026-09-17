@@ -35,7 +35,6 @@ import { DOMESTIC_TRAILS, WILD_TRAILS } from "@/lib/animal-trails";
 import {
   COVER_CLASS_FILTER,
   COVER_FILL_COLOR,
-  DISTRICT_SPOTS,
   DISTRICT_VIEW,
   HOME_VIEW,
   LANDUSE_CLASS_FILTER,
@@ -1761,26 +1760,20 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       const map = mapRef.current;
       if (!map) return;
       const center = map.getCenter();
-      const low = map.getZoom() < 8 && lng == null;
       map.easeTo({
-        center: [lng ?? (low ? DISTRICT_VIEW.lng : center.lng), lat ?? (low ? DISTRICT_VIEW.lat : center.lat)],
+        center: [lng ?? center.lng, lat ?? center.lat],
         zoom: Math.max(map.getZoom(), 17.2),
         pitch: 68,
         duration: 800,
       });
     },
-    dropToDistricts: (zoneClass?: string | null) => {
+    dropToDistricts: (_zoneClass?: string | null) => {
       const map = mapRef.current;
       if (!map) return;
-      const spot =
-        (zoneClass && DISTRICT_SPOTS[zoneClass]) ||
-        (map.getZoom() < 8 ? DISTRICT_VIEW : null);
       const center = map.getCenter();
       map.jumpTo({
-        center: spot
-          ? [spot.lng, spot.lat]
-          : [center.lng, center.lat],
-        zoom: spot?.zoom ?? Math.max(map.getZoom(), DISTRICT_VIEW.zoom),
+        center: [center.lng, center.lat],
+        zoom: Math.max(map.getZoom(), DISTRICT_VIEW.zoom),
         bearing: 0,
         pitch: 0,
       });

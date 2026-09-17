@@ -48,13 +48,13 @@ export function pickVernacular(names: GbifVernacular[]): string | null {
     const raw = row.vernacularName?.trim();
     if (!raw || raw.length > 48) continue;
     const lang = (row.language ?? "").toLowerCase();
-    if (lang && lang !== "eng" && lang !== "en") continue;
     if (/aceae|idae|iformes/.test(raw)) continue;
-    const boost = lang === "eng" || lang === "en" ? 12 : 2;
+    const boost =
+      lang === "eng" || lang === "en" ? 12 : lang === "" ? 2 : 1;
     counts.set(raw, (counts.get(raw) ?? 0) + boost);
   }
   let best: string | null = null;
-  let score = 0;
+  let score = -Infinity;
   for (const [name, n] of counts) {
     const words = name.split(/\s+/).length;
     const s = n - Math.abs(words - 2);
@@ -93,24 +93,4 @@ export function occurrenceFacts(
     rec.recordedBy ? { label: "By", value: rec.recordedBy } : null,
     rec.basisOfRecord ? { label: "Basis", value: rec.basisOfRecord.replace(/_/g, " ") } : null,
   ].filter((row): row is { label: string; value: string } => Boolean(row));
-}
-
-export function lidarSummary(args: {
-  workunit?: string | null;
-  project?: string | null;
-  ql?: string | null;
-  gsd?: number | null;
-  points?: number | null;
-  year?: number | null;
-  ept?: boolean;
-}): string {
-  const bits = [
-    args.workunit,
-    args.ql && args.ql !== "Other" ? args.ql : null,
-    args.gsd != null ? `${args.gsd < 1 ? args.gsd.toFixed(2) : Math.round(args.gsd)} m` : null,
-    args.year ? String(args.year) : null,
-    args.points != null ? `${(args.points / 1e9).toFixed(1)}B pts` : null,
-    args.ept ? "EPT" : null,
-  ].filter(Boolean);
-  return bits.join(" · ") || "No lidar workunit at look-at";
 }

@@ -84,7 +84,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   ground: {
     icon: Gem,
     usage:
-      "Elevation you can walk: USGS 3DEP height, Mapzen DEM hills, and lidar inventory (workunit, QL, EPT). NASA GEDI RH100 is canopy height from spaceborne lidar. Macrostrat lithology, SoilGrids, OSM ditches. Ask what rocks or lidar are here.",
+      "Height anywhere: Open-Meteo DEM worldwide, USGS 3DEP where it answers. NASA GEDI RH100 canopy (global spaceborne lidar) plus ICESat-2 tracks at the look-at. Airborne 3DEP LPC only where a US workunit exists. Macrostrat, SoilGrids, OSM ditches. Ask lidar / rocks here.",
   },
   bugs: {
     icon: Bug,
@@ -124,7 +124,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   iot: {
     icon: Radio,
     usage:
-      "IoT into the perception layer: METAR weather stations, USGS 3DEP elevation, Open-Meteo climate and US AQI at the look-at. The Internet of Minds uses precip, wind, air, and seismic to reroute transit and share skills across zone, wildlife, plants, and walk.",
+      "IoT into the perception layer: METAR, Open-Meteo climate, worldwide height, air quality at the look-at. USGS 3DEP only refines height inside the US.",
   },
 };
 

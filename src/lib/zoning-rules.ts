@@ -115,7 +115,7 @@ export function evaluateRules(ctx: RuleContext): RuleHit[] {
       effect: "container",
       title: "Drop closer to read districts",
       detail:
-        "Land-use tiles load below about 40 km. Drop in to Albuquerque, then walk the street.",
+        "Land-use tiles load below about 40 km. Drop in at this look-at, then walk the street.",
       local: false,
     });
   } else if (zoned && !unlabeled) {
