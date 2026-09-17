@@ -38,6 +38,7 @@ export type MapObject = {
   ground?: string;
   facts?: Array<{ label: string; value: string }>;
   trend?: number[];
+  photo?: string | null;
   lng?: number;
   lat?: number;
   /** Zone memory — present when this pick is a mutable district. */

@@ -24,7 +24,7 @@ const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
   { id: "flights", re: /\b(flights?|aircraft|ads-?b|planes?)\b/ },
   { id: "wildlife", re: /\b(animals?|wildlife|wild|mammals?|habitat|migration|fauna|critters?)\b/ },
   { id: "plants", re: /\b(plants?|vegetation|flora|trees?|shrubs?|crops?|growing|botany|native plants|ndvi|greenness|canopy)\b/ },
-  { id: "ground", re: /\b(rocks?|geology|lithology|elevation|ditches?|soil|material|bedrock|terrain elev)\b/ },
+  { id: "ground", re: /\b(rocks?|geology|lithology|elevation|ditches?|soil|material|bedrock|terrain elev|lidar|liDAR|point clouds?|canopy height|gedi)\b/ },
   { id: "bugs", re: /\b(bugs?|insects?|beetles?|arthropods?)\b/ },
   { id: "livestock", re: /\b(livestock|cattle|herd(?:s|ing)?|horses?|domestic)\b/ },
   { id: "trails", re: /\b(terrain|hiking|trails?|footpaths?|paths?)\b/ },

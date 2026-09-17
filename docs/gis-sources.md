@@ -47,10 +47,11 @@ answer without an API key and are wired into perception:
 | Imagery | NASA GIBS Blue Marble + Esri World Imagery | Base |
 | Greenness | NASA GIBS MODIS Terra NDVI 8-day | Plants |
 | Elevation | USGS 3DEP EPQS (US point height) + Mapzen/Nextzen terrarium DEM (hills in walk) | Ground, walk |
+| Lidar | USGS 3DEP LPC inventory (workunit, QL, GSD) + Entwine EPT metadata. NASA GEDI L3 RH100 canopy-height tiles (spaceborne). Raw LAS/LAZ is not streamed — billions of points. | Ground |
 | Geology | Macrostrat map units (lithology + age) | Ground |
 | Soil | ISRIC SoilGrids sand/clay/silt 0–5 cm | Ground |
 | Ditches / hydro | OSM waterway (ditch, drain, stream, canal) + OpenMapTiles water | Ground, Plants |
-| Occurrences | GBIF density + occurrence search | Wild, Plants, Domestic, Bugs |
+| Occurrences | GBIF density + occurrence search with vernacular, family, IUCN, photo. Wildlife = mammals, birds, amphibians, squamates (GBIF files reptiles under Squamata, not class Reptilia). | Wild, Plants, Domestic, Bugs |
 | Citizen science | iNaturalist Plantae observations | Plants |
 | Land cover | OSM OpenMapTiles landuse / landcover / park / water | Zoning, Plants |
 | Trees / woods | OSM Overpass trees/woods/orchards; fill-extrusion canopy + stems in walk | Plants |
@@ -68,6 +69,12 @@ There is no free worldwide 3DEP XYZ terrain-RGB. What we can actually drape:
 
 - **USGS 3DEP EPQS** — a JSON height at the look-at (meters). Wired into IoT and Ground.
 - **Mapzen/Nextzen terrarium DEM** — RGB-encoded tiles MapLibre can inflate. Walk mode leaves the globe, sits on this DEM, and exaggerates relief so ditches and mesas read as ground, not a texture.
+
+## Lidar (point clouds vs canopy)
+
+Airborne USGS 3DEP lidar for Albuquerque is real: workunit `NM_MRCOG_B1_2018` (QL2, ~0.6 m, 14 billion points in EPT) plus the 2010 legacy cloud. The HUD **inventories** that cloud (workunit, quality, year, point count). It does not stream LAS/LAZ — a browser globe cannot hold 10¹⁰ points.
+
+Canopy that *does* drape: NASA **GEDI L3 RH100** (ISS spaceborne lidar, ~1 km). RH100 is the height where the full laser return has come back — a canopy-top metric, not a stem model. Ask `lidar here`.
 
 ## NDVI (greenness)
 

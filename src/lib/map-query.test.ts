@@ -91,6 +91,12 @@ describe("parseMapQuery", () => {
     assert.ok(intent.overlays.includes("bugs"));
   });
 
+  it("asks for lidar as ground, not a separate globe", () => {
+    const intent = parseMapQuery("lidar here");
+    assert.equal(intent.here, true);
+    assert.ok(intent.overlays.includes("ground"));
+  });
+
   it("splits the district under the look-at", () => {
     const intent = parseMapQuery("split this zone");
     assert.equal(intent.edit, "split");

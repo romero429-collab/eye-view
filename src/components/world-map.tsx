@@ -52,7 +52,7 @@ import {
 } from "@/lib/basemaps";
 import { cn } from "@/lib/utils";
 import { destination, wrapBearing } from "@/lib/spatial";
-import { stemsFromPlants, terrainExaggeration } from "@/lib/ground";
+import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
   densityObject,
@@ -260,6 +260,13 @@ function buildStyle(): StyleSpecification {
         tileSize: 256,
         maxzoom: 9,
         attribution: "NASA GIBS MODIS NDVI",
+      },
+      gedi: {
+        type: "raster",
+        tiles: [TILES.gedi],
+        tileSize: 256,
+        maxzoom: 7,
+        attribution: "NASA GEDI L3 canopy height",
       },
       gbifBugs: {
         type: "raster",
@@ -789,6 +796,14 @@ function buildStyle(): StyleSpecification {
         paint: { "raster-opacity": 0.42 },
       },
       {
+        id: "gedi",
+        type: "raster",
+        source: "gedi",
+        maxzoom: 7,
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.55 },
+      },
+      {
         id: "plants-heat",
         type: "heatmap",
         source: "plantsLive",
@@ -1278,7 +1293,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "memory-line",
     "memory-queue",
   ],
-  ground: ["geology", "ditches", "otm-waterway"],
+  ground: ["gedi", "geology", "ditches", "otm-waterway"],
   bugs: ["gbifBugs", "bugs-heat", "bugsLive"],
   health: ["health"],
   radar: ["radar"],
@@ -1576,6 +1591,7 @@ function featureToObject(
     layer,
     facts,
     trend: parseTrend(props.trend),
+    photo: typeof props.photo === "string" && props.photo.startsWith("https://") ? props.photo : null,
     lng: lngLat?.lng,
     lat: lngLat?.lat,
   };
@@ -2057,6 +2073,38 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               }
             } catch {
               /* keep density cell */
+            }
+          })();
+          return;
+        }
+
+        if (ov.ground) {
+          pickObject({
+            kind: "rock",
+            title: GEDI_EXPLAIN.title,
+            detail: GEDI_EXPLAIN.detail,
+            source: GEDI_EXPLAIN.source,
+            layer: "Ground",
+            facts: [
+              { label: "Layer", value: "Ground" },
+              { label: "Metric", value: "GEDI RH100 canopy height" },
+              { label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` },
+            ],
+            lng,
+            lat,
+          });
+          const pad = Math.max(0.04, 0.35 / Math.pow(2, Math.max(0, zoom - 5)));
+          void (async () => {
+            try {
+              const res = await fetch(
+                `/api/live?kind=ground&west=${lng - pad}&south=${lat - pad}&east=${lng + pad}&north=${lat + pad}&zoom=${zoom.toFixed(2)}&lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}`,
+              );
+              if (!res.ok) return;
+              const data = (await res.json()) as GeoJSON.FeatureCollection;
+              const nearest = closestFeature(data.features ?? [], lng, lat);
+              if (nearest) pickObject(featureToObject(nearest, "geology", event.lngLat));
+            } catch {
+              /* keep GEDI cell */
             }
           })();
           return;

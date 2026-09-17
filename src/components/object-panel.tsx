@@ -174,6 +174,14 @@ export function ObjectPanel({
               </Button>
             </header>
             <p className="mt-3 text-sm leading-relaxed text-muted">{object.detail}</p>
+            {object.photo ? (
+              <img
+                src={object.photo}
+                alt={object.title}
+                className="mt-3 h-36 w-full rounded-[var(--radius-sm)] object-cover"
+                crossOrigin="anonymous"
+              />
+            ) : null}
             {object.trend && object.trend.length > 1 ? (
               <div className="mt-3">
                 <p className="text-xs uppercase tracking-label text-subtle">14-day trend</p>

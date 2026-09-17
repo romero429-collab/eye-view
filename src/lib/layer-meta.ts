@@ -84,7 +84,7 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   ground: {
     icon: Gem,
     usage:
-      "Elevation you can walk: USGS 3DEP at the look-at, Mapzen terrarium DEM for hills. Macrostrat lithology, SoilGrids texture, OSM ditches and rock. Ask what rocks or ditches are here.",
+      "Elevation you can walk: USGS 3DEP height, Mapzen DEM hills, and lidar inventory (workunit, QL, EPT). NASA GEDI RH100 is canopy height from spaceborne lidar. Macrostrat lithology, SoilGrids, OSM ditches. Ask what rocks or lidar are here.",
   },
   bugs: {
     icon: Bug,
@@ -136,7 +136,7 @@ export const OBJECT_META: Record<MapObjectKind, LayerMeta> = {
   alert: LAYER_META.alerts,
   event: LAYER_META.events,
   trail: { icon: PawPrint, usage: "A mapped corridor or drive." },
-  sighting: { icon: PawPrint, usage: "A GBIF occurrence record." },
+  sighting: { icon: PawPrint, usage: "A GBIF occurrence — common name, family, IUCN, photo when present." },
   plant: { icon: Leaf, usage: "A named plant occurrence — tree, shrub, or crop." },
   bug: { icon: Bug, usage: "A GBIF insect occurrence." },
   rock: { icon: Gem, usage: "Bedrock, lithology, or OSM rock at the look-at." },

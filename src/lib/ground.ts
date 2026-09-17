@@ -16,6 +16,13 @@ export const NDVI_EXPLAIN = {
 export const USGS_ELEV_NOTE =
   "USGS 3DEP (US) gives the look-at height to the meter. Worldwide hills use Mapzen/Nextzen terrarium DEM so walk mode follows the ground up and down.";
 
+export const GEDI_EXPLAIN = {
+  title: "GEDI canopy height",
+  detail:
+    "NASA ISS GEDI L3 mean RH100 — spaceborne lidar. RH100 is the height where the full laser return has come back, a canopy-top metric. Bright is taller vegetation. Airborne USGS 3DEP point clouds (EPT) are the inventory under Ground; we cannot stream billions of LAS points in the HUD.",
+  source: "NASA GEDI L3 RH100 · USGS 3DEP LPC",
+};
+
 export function stemsFromPlants(fc: FeatureCollection): FeatureCollection {
   const features: Feature[] = [];
   for (const feat of fc.features) {

@@ -106,7 +106,7 @@ export const OVERLAYS: OverlayDef[] = [
   {
     id: "ground",
     label: "Ground",
-    blurb: "Elevation, rocks, ditches, soil",
+    blurb: "Elevation, lidar, rocks, ditches",
     live: true,
     group: "map",
   },
@@ -222,6 +222,8 @@ export const TILES = {
   gbifPlants:
     "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=6&bin=hex&hexPerTile=22&style=green.poly",
   ndvi: gibsNdviTileUrl(),
+  gedi:
+    "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GEDI_ISS_L3_Canopy_Height_Mean_RH100_201904-202303/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png",
   terrarium: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
   gbifBugs:
     "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=216&bin=hex&hexPerTile=22&style=classic.poly",
@@ -230,7 +232,7 @@ export const TILES = {
 } as const;
 
 export const TILE_ATTRIBUTION =
-  "NASA GIBS NDVI, Mapzen/USGS elevation, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Macrostrat, SoilGrids, Waymarked Trails, Open-Meteo, disease.sh";
+  "NASA GIBS NDVI + GEDI, Mapzen/USGS elevation, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Macrostrat, SoilGrids, Waymarked Trails, Open-Meteo, disease.sh";
 
 export {
   COVER_CLASS_FILTER,

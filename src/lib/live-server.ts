@@ -2,6 +2,16 @@ import GtfsMod from "gtfs-realtime-bindings";
 
 const GtfsRealtimeBindings = (GtfsMod as { default?: typeof GtfsMod }).default ?? GtfsMod;
 import type { Feature, FeatureCollection, Geometry } from "geojson";
+import {
+  WILDLIFE_TAXA,
+  lidarSummary,
+  occurrenceFacts,
+  occurrenceTitle,
+  photoUrl,
+  pickVernacular,
+  type GbifOccurrence,
+  type GbifVernacular,
+} from "./gbif.ts";
 
 export type LiveKind =
   | "transit"
@@ -348,17 +358,32 @@ async function eventsFeatures(): Promise<FeatureCollection> {
 }
 
 type GbifResult = {
-  results?: Array<{
-    decimalLatitude?: number;
-    decimalLongitude?: number;
-    species?: string;
-    scientificName?: string;
-    country?: string;
-    eventDate?: string;
-    basisOfRecord?: string;
-    taxonKey?: number;
-  }>;
+  results?: GbifOccurrence[];
 };
+
+const vernacularCache = new Map<number, string | null>();
+
+async function vernacularForKeys(keys: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  const unique = [...new Set(keys.filter((k) => Number.isFinite(k)))].slice(0, 8);
+  await Promise.all(
+    unique.map(async (key) => {
+      if (vernacularCache.has(key)) {
+        const hit = vernacularCache.get(key);
+        if (hit) out.set(key, hit);
+        return;
+      }
+      const data = (await fetchJson(
+        `https://api.gbif.org/v1/species/${key}/vernacularNames?limit=40`,
+        5000,
+      )) as { results?: GbifVernacular[] } | null;
+      const name = pickVernacular(data?.results ?? []);
+      vernacularCache.set(key, name);
+      if (name) out.set(key, name);
+    }),
+  );
+  return out;
+}
 
 async function gbifOccurrences(
   taxonKey: number,
@@ -382,28 +407,28 @@ async function gbifOccurrences(
     `https://api.gbif.org/v1/occurrence/search?${params.toString()}`,
     8000,
   )) as GbifResult | null;
+  const records = data?.results ?? [];
+  const names = await vernacularForKeys(records.map((r) => r.speciesKey ?? r.taxonKey ?? 0).filter(Boolean));
   const features: Feature[] = [];
   const kind = opts?.kind ?? "sighting";
   const fallback = opts?.fallback ?? "Animal";
-  for (const rec of data?.results ?? []) {
+  for (const rec of records) {
     const lat = rec.decimalLatitude;
     const lon = rec.decimalLongitude;
     if (lat == null || lon == null) continue;
-    const title = rec.species || rec.scientificName || fallback;
+    const common = names.get(rec.speciesKey ?? rec.taxonKey ?? 0) ?? null;
+    const title = occurrenceTitle(rec, common, fallback);
+    const photo = photoUrl(rec);
     features.push(
       point(lon, lat, {
         kind,
         title,
-        detail: [rec.country, rec.eventDate?.slice(0, 10)].filter(Boolean).join(" · "),
+        detail: [common && rec.species, rec.family, rec.class, rec.country, rec.eventDate?.slice(0, 10)]
+          .filter(Boolean)
+          .join(" · "),
         source: "GBIF occurrence search",
-        facts: JSON.stringify(
-          [
-            rec.scientificName ? { label: "Taxon", value: rec.scientificName } : null,
-            rec.country ? { label: "Country", value: rec.country } : null,
-            rec.eventDate ? { label: "When", value: rec.eventDate.slice(0, 10) } : null,
-            rec.basisOfRecord ? { label: "Basis", value: rec.basisOfRecord } : null,
-          ].filter(Boolean),
-        ),
+        photo,
+        facts: JSON.stringify(occurrenceFacts(rec, common)),
       }),
     );
   }
@@ -411,11 +436,15 @@ async function gbifOccurrences(
 }
 
 async function wildlifeFeatures(q: LiveQuery): Promise<FeatureCollection> {
-  const [mammals, birds] = await Promise.all([
-    gbifOccurrences(359, q, 50),
-    gbifOccurrences(212, q, 50),
-  ]);
-  return { type: "FeatureCollection", features: [...mammals, ...birds] };
+  const batches = await Promise.all(
+    WILDLIFE_TAXA.map((taxon) =>
+      gbifOccurrences(taxon.key, q, taxon.key === 212 ? 40 : 25, {
+        kind: "sighting",
+        fallback: taxon.label,
+      }),
+    ),
+  );
+  return { type: "FeatureCollection", features: batches.flat() };
 }
 
 const STOCK_TAXA: Array<{ key: number; label: string }> = [
@@ -1341,7 +1370,7 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
   const lat = q.lat ?? (q.south != null && q.north != null ? (q.south + q.north) / 2 : null);
   const lng = q.lng ?? (q.west != null && q.east != null ? (q.west + q.east) / 2 : null);
   if (lat == null || lng == null) return empty();
-  const [macro, soil, elev, osm] = await Promise.all([
+  const [macro, soil, elev, osm, lidar] = await Promise.all([
     fetchJson(
       `https://macrostrat.org/api/v2/geologic_units/map?lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}`,
       8000,
@@ -1355,6 +1384,7 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
       6000,
     ),
     osmGroundFeatures(q),
+    lidarInventory(lat, lng),
   ]);
   const features: Feature[] = [...osm];
   const units = ((macro as { success?: { data?: MacroUnit[] } } | null)?.success?.data ?? []).slice(0, 3);
@@ -1367,27 +1397,40 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
       soilBits.push({ label: layer.name, value: `${Math.round(mean)}` });
     }
   }
-  if (units[0] || Number.isFinite(elevM) || soilBits.length) {
+  if (units[0] || Number.isFinite(elevM) || soilBits.length || lidar) {
     const top = units[0];
-    const title = top?.name || "Ground at look-at";
+    const title = lidar?.workunit ? `Lidar · ${lidar.workunit}` : top?.name || "Ground at look-at";
     const lith = top?.lith || "unspecified lithology";
+    const lidarLine = lidar
+      ? lidarSummary({
+          workunit: lidar.workunit,
+          ql: lidar.ql,
+          gsd: lidar.gsd,
+          points: lidar.points,
+          year: lidar.year,
+          ept: lidar.ept,
+        })
+      : null;
     features.unshift(
       point(lng, lat, {
         kind: "rock",
         title,
-        detail: [lith, top?.best_int_name || top?.t_int_name, Number.isFinite(elevM) ? `${Math.round(elevM)} m` : null]
+        detail: [lidarLine, lith, top?.best_int_name || top?.t_int_name, Number.isFinite(elevM) ? `${Math.round(elevM)} m` : null]
           .filter(Boolean)
           .join(" · "),
-        source: "Macrostrat · USGS 3DEP · SoilGrids",
+        source: "USGS 3DEP LPC · NASA GEDI · Macrostrat · SoilGrids",
         elev: Number.isFinite(elevM) ? elevM : null,
         facts: JSON.stringify(
           [
             { label: "Layer", value: "Ground" },
+            lidarLine ? { label: "Lidar", value: lidarLine } : null,
+            lidar?.project ? { label: "Project", value: lidar.project } : null,
             top?.lith ? { label: "Lithology", value: top.lith } : null,
             top?.best_int_name ? { label: "Age", value: top.best_int_name } : null,
             top?.descrip ? { label: "Note", value: String(top.descrip).slice(0, 140) } : null,
             Number.isFinite(elevM) ? { label: "Elev m", value: String(Math.round(elevM)) } : null,
             ...soilBits.map((b) => ({ label: `Soil ${b.label}`, value: b.value })),
+            { label: "Canopy", value: "NASA GEDI L3 RH100 (spaceborne lidar)" },
             { label: "DEM", value: "USGS 3DEP + Mapzen terrarium" },
           ].filter(Boolean),
         ),
@@ -1395,6 +1438,56 @@ async function groundFeatures(q: LiveQuery): Promise<FeatureCollection> {
     );
   }
   return { type: "FeatureCollection", features };
+}
+
+type LidarHit = {
+  workunit: string;
+  project: string | null;
+  ql: string | null;
+  gsd: number | null;
+  year: number | null;
+  points: number | null;
+  ept: boolean;
+};
+
+type UsgsIndex = {
+  features?: Array<{
+    attributes?: {
+      workunit?: string;
+      project?: string;
+      ql?: string;
+      dem_gsd_meters?: number;
+      collect_end?: number;
+      lpc_category?: string;
+    };
+  }>;
+};
+
+async function lidarInventory(lat: number, lng: number): Promise<LidarHit | null> {
+  const data = (await fetchJson(
+    `https://index.nationalmap.gov/arcgis/rest/services/3DEPElevationIndex/MapServer/8/query?geometry=${lng},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=workunit,project,ql,dem_gsd_meters,collect_end,lpc_category&returnGeometry=false&f=json`,
+    8000,
+  )) as UsgsIndex | null;
+  const rows = (data?.features ?? [])
+    .map((f) => f.attributes)
+    .filter((a): a is NonNullable<typeof a> => Boolean(a?.workunit))
+    .sort((a, b) => Number(b.collect_end ?? 0) - Number(a.collect_end ?? 0));
+  const best = rows.find((r) => /meet/i.test(r.lpc_category ?? "")) ?? rows[0];
+  if (!best?.workunit) return null;
+  const year = best.collect_end ? new Date(best.collect_end).getUTCFullYear() : null;
+  const ept = (await fetchJson(
+    `https://s3-us-west-2.amazonaws.com/usgs-lidar-public/${encodeURIComponent(best.workunit)}/ept.json`,
+    5000,
+  )) as { points?: number } | null;
+  return {
+    workunit: best.workunit,
+    project: best.project ?? null,
+    ql: best.ql ?? null,
+    gsd: Number.isFinite(Number(best.dem_gsd_meters)) ? Number(best.dem_gsd_meters) : null,
+    year: Number.isFinite(year) ? year : null,
+    points: Number.isFinite(Number(ept?.points)) ? Number(ept?.points) : null,
+    ept: Boolean(ept && (ept.points || ept)),
+  };
 }
 
 async function osmGroundFeatures(q: LiveQuery): Promise<Feature[]> {

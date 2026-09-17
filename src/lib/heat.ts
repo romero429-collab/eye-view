@@ -278,7 +278,7 @@ export function densityObject(
     kind: "sighting",
     title: "Wildlife density",
     detail:
-      "GBIF mammal and bird occurrence heat. The amber cell is animal density, not a plane and not a country. Nearby named records load next to this cell.",
+      "GBIF mammal, bird, amphibian, and squamate occurrence heat. The amber cell is animal density, not a plane and not a country. Nearby named records — common name, family, IUCN — load next to this cell.",
     source: "GBIF occurrence density (Mammalia + Aves)",
     layer: "Wild",
     facts: [
