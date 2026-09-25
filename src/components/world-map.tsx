@@ -53,7 +53,7 @@ import { cn } from "@/lib/utils";
 import { destination, wrapBearing } from "@/lib/spatial";
 import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground";
 import { assetsFromGround } from "@/lib/proc-assets";
-import { houseAt } from "@/lib/interior";
+import { houseAt, pickFootprint } from "@/lib/interior";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
   densityObject,
@@ -1717,6 +1717,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
   const overlaysRef = useRef(overlays);
   const patchesRef = useRef(patches);
   const keysRef = useRef(new Set<string>());
+  const indoorsRef = useRef(false);
   const speedRef = useRef(0);
   const onSceneRef = useRef(onScene);
   const hoverCbRef = useRef(onHover);
@@ -1845,15 +1846,34 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     enterInterior: (lng: number, lat: number) => {
       const map = mapRef.current;
       if (!map) return;
-      const house = houseAt(lng, lat);
+      indoorsRef.current = true;
+      const rings: number[][][] = [];
+      try {
+        const feats = map.querySourceFeatures("openmaptiles", { sourceLayer: "building" });
+        for (const feat of feats) {
+          const g = feat.geometry;
+          if (g.type === "Polygon") rings.push(g.coordinates[0] as number[][]);
+          else if (g.type === "MultiPolygon") {
+            for (const poly of g.coordinates) {
+              if (poly[0]) rings.push(poly[0] as number[][]);
+            }
+          }
+        }
+      } catch {
+        /* building tiles not in yet */
+      }
+      const house = houseAt(lng, lat, pickFootprint(rings, lng, lat));
       (map.getSource("interior") as GeoJSONSource | undefined)?.setData(house.features);
       for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
       }
+      for (const id of ["otm-building-3d", "otm-canopy-3d", "trees3d", "rocks3d"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+      }
       map.easeTo({
-        center: [house.door.lng, house.door.lat],
-        zoom: 18.8,
-        pitch: 62,
+        center: [house.lng, house.lat],
+        zoom: 19,
+        pitch: 55,
         bearing: house.bearing,
         duration: 900,
       });
@@ -1861,12 +1881,16 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     exitInterior: () => {
       const map = mapRef.current;
       if (!map) return;
+      indoorsRef.current = false;
       (map.getSource("interior") as GeoJSONSource | undefined)?.setData({
         type: "FeatureCollection",
         features: [],
       });
       for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+      }
+      for (const id of ["otm-building-3d", "otm-canopy-3d", "trees3d", "rocks3d"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
       }
     },
     dropToDistricts: (_zoneClass?: string | null) => {
@@ -2593,20 +2617,20 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       map.setLayoutProperty(
         "otm-building-3d",
         "visibility",
-        walking || overlays.plots ? "visible" : "none",
+        !indoorsRef.current && (walking || overlays.plots) ? "visible" : "none",
       );
     }
     const walkStructure = walking || overlays.plants;
     for (const id of ["otm-canopy-3d", "trees3d"]) {
       if (map.getLayer(id)) {
-        map.setLayoutProperty(id, "visibility", walkStructure ? "visible" : "none");
+        map.setLayoutProperty(id, "visibility", !indoorsRef.current && walkStructure ? "visible" : "none");
       }
     }
     if (map.getLayer("rocks3d")) {
       map.setLayoutProperty(
         "rocks3d",
         "visibility",
-        walking || overlays.ground ? "visible" : "none",
+        !indoorsRef.current && (walking || overlays.ground) ? "visible" : "none",
       );
     }
     if (map.getLayer("otm-waterway")) {
