@@ -54,7 +54,7 @@ import { destination, wrapBearing } from "@/lib/spatial";
 import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground";
 import { assetsFromGround } from "@/lib/proc-assets";
 import { pickFootprint, planFromSurvey, shellFromRing } from "@/lib/interior";
-import { createSatelliteDrapeLayer, meshFromPolys, polysFromFeatures, type DrapeLayer } from "@/lib/satellite-drape";
+import { paintSatelliteColors, satelliteColor } from "@/lib/satellite-drape";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
   densityObject,
@@ -617,7 +617,7 @@ function buildStyle(): StyleSpecification {
         minzoom: 13,
         layout: { visibility: "none" },
         paint: {
-          "fill-extrusion-color": "#6d7c82",
+          "fill-extrusion-color": ["coalesce", ["feature-state", "sat"], "#6d7c82"],
           "fill-extrusion-height": [
             "coalesce",
             ["get", "render_height"],
@@ -1725,12 +1725,6 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
   const interiorToken = useRef(0);
   const interiorMetaRef = useRef(onInteriorMeta);
   interiorMetaRef.current = onInteriorMeta;
-  const volumeRef = useRef<{ trees: GeoJSON.FeatureCollection; rocks: GeoJSON.FeatureCollection; interior: GeoJSON.FeatureCollection }>({
-    trees: { type: "FeatureCollection", features: [] },
-    rocks: { type: "FeatureCollection", features: [] },
-    interior: { type: "FeatureCollection", features: [] },
-  });
-  const refreshDrapeRef = useRef<() => void>(() => {});
   const speedRef = useRef(0);
   const onSceneRef = useRef(onScene);
   const hoverCbRef = useRef(onHover);
@@ -1878,8 +1872,11 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       const hit = pickFootprint(rings, lng, lat);
       const show = (fc: GeoJSON.FeatureCollection, center: [number, number]) => {
         (map.getSource("interior") as GeoJSONSource | undefined)?.setData(fc);
-        volumeRef.current.interior = fc;
-        refreshDrapeRef.current();
+        const zoom = map.getZoom();
+        void paintSatelliteColors(fc, zoom).then((painted) => {
+          if (!indoorsRef.current) return;
+          (map.getSource("interior") as GeoJSONSource | undefined)?.setData(painted);
+        });
         for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
           if (map.getLayer(id)) {
             map.setLayoutProperty(id, "visibility", "visible");
@@ -1967,8 +1964,6 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         type: "FeatureCollection",
         features: [],
       });
-      volumeRef.current.interior = { type: "FeatureCollection", features: [] };
-      refreshDrapeRef.current();
       for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
       }
@@ -2135,64 +2130,36 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           /* DEM optional */
         }
         map.setRenderWorldCopies(false);
-        const drapeOpacity: Record<string, number> = {
-          "otm-building-3d": 0.88,
-          trees3d: 0.9,
-          rocks3d: 0.92,
-          "interior-floor": 0.95,
-          "interior-walls": 0.94,
-          "interior-furn": 0.96,
-        };
-        const setDrapeHidden = (hidden: boolean) => {
-          if (!map) return;
-          for (const [id, opacity] of Object.entries(drapeOpacity)) {
-            if (!map.getLayer(id)) continue;
-            map.setPaintProperty(id, "fill-extrusion-opacity", hidden ? 0 : opacity);
-          }
-        };
-        const drape: DrapeLayer = createSatelliteDrapeLayer((active) => setDrapeHidden(active));
-        if (!map.getLayer("sat-drape")) map.addLayer(drape);
-        const refreshDrape = () => {
-          const live = map;
-          if (!live) return;
-          if (live.getZoom() < 15) {
-            drape.setMesh(null, live);
+        const paintBuildings = () => {
+          if (!map || map.getZoom() < 15) return;
+          let feats: GeoJSON.Feature[] = [];
+          try {
+            feats = map.querySourceFeatures("openmaptiles", { sourceLayer: "building" }) as GeoJSON.Feature[];
+          } catch {
             return;
           }
-          const features: GeoJSON.Feature[] = [];
-          if (indoorsRef.current) {
-            features.push(...volumeRef.current.interior.features);
-          } else {
-            try {
-              features.push(
-                ...(live.querySourceFeatures("openmaptiles", { sourceLayer: "building" }) as GeoJSON.Feature[]),
+          const seen = new Set<string | number>();
+          for (const feat of feats.slice(0, 80)) {
+            if (feat.id == null || seen.has(feat.id)) continue;
+            seen.add(feat.id);
+            const geom = feat.geometry;
+            const ring = geom?.type === "Polygon" ? geom.coordinates[0] : null;
+            const p0 = ring?.[0];
+            if (!p0) continue;
+            const id = feat.id;
+            void satelliteColor(p0[0], p0[1], map.getZoom()).then((color) => {
+              if (!color || !map) return;
+              map.setFeatureState(
+                { source: "openmaptiles", sourceLayer: "building", id },
+                { sat: color },
               );
-            } catch {
-              /* tiles not in */
-            }
-            features.push(...volumeRef.current.trees.features, ...volumeRef.current.rocks.features);
+            });
           }
-          const polys = polysFromFeatures(features, 8).map((poly) => {
-            const p0 = poly.ring[0];
-            let ground = 0;
-            if (p0) {
-              try {
-                const elev = live.queryTerrainElevation({ lng: p0[0], lat: p0[1] });
-                const exaggeration = live.getTerrain()?.exaggeration ?? 1;
-                if (typeof elev === "number" && Number.isFinite(elev)) ground = elev * exaggeration;
-              } catch {
-                /* sea level */
-              }
-            }
-            return { ...poly, ground };
-          });
-          drape.setMesh(meshFromPolys(polys, live.getZoom()), live);
         };
-        refreshDrapeRef.current = refreshDrape;
-        let drapeTimer = 0;
-        map.on("move", () => {
-          window.clearTimeout(drapeTimer);
-          drapeTimer = window.setTimeout(refreshDrape, 400);
+        let paintTimer = 0;
+        map.on("moveend", () => {
+          window.clearTimeout(paintTimer);
+          paintTimer = window.setTimeout(paintBuildings, 200);
         });
         map.resize();
         emitView();
@@ -2975,9 +2942,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
             }
             if (kind === "plants") {
               (map.getSource("plantsLive") as GeoJSONSource | undefined)?.setData(data);
-              (map.getSource("trees3d") as GeoJSONSource | undefined)?.setData(stemsFromPlants(data));
-              volumeRef.current.trees = stemsFromPlants(data);
-              refreshDrapeRef.current();
+              const stems = stemsFromPlants(data);
+              (map.getSource("trees3d") as GeoJSONSource | undefined)?.setData(stems);
+              const zoom = map.getZoom();
+              void paintSatelliteColors(stems, zoom).then((painted) => {
+                (map.getSource("trees3d") as GeoJSONSource | undefined)?.setData(painted);
+              });
               notes.push(`${data.count ?? data.features.length} plants`);
               return;
             }
@@ -2992,11 +2962,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
                 type: "FeatureCollection",
                 features: ditchFeats,
               });
-              (map.getSource("rocks3d") as GeoJSONSource | undefined)?.setData(
-                assetsFromGround({ type: "FeatureCollection", features: rockFeats }),
-              );
-              volumeRef.current.rocks = assetsFromGround({ type: "FeatureCollection", features: rockFeats });
-              refreshDrapeRef.current();
+              const rocks = assetsFromGround({ type: "FeatureCollection", features: rockFeats });
+              (map.getSource("rocks3d") as GeoJSONSource | undefined)?.setData(rocks);
+              const zoom = map.getZoom();
+              void paintSatelliteColors(rocks, zoom).then((painted) => {
+                (map.getSource("rocks3d") as GeoJSONSource | undefined)?.setData(painted);
+              });
               notes.push(`${data.features.length} ground`);
               return;
             }
