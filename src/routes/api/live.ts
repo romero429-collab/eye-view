@@ -18,6 +18,7 @@ const KINDS = new Set<LiveKind>([
   "iot",
   "ground",
   "bugs",
+  "indoor",
 ]);
 
 export const Route = createFileRoute("/api/live")({

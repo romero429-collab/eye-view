@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { frameFromRing, houseAt, pickFootprint, pointInRing } from "./interior.ts";
+import { frameFromRing, houseAt, pickFootprint, planFromSurvey, pointInRing, shellFromRing } from "./interior.ts";
 import { haversineMeters } from "./spatial.ts";
 
 function floorSpan(lng: number, lat: number, frame?: { lng: number; lat: number; bearing: number; width: number; depth: number }) {
@@ -15,18 +15,15 @@ function floorSpan(lng: number, lat: number, frame?: { lng: number; lat: number;
 }
 
 describe("interior instance", () => {
-  it("opens the same rooms at the same look-at", () => {
+  it("opens the same schematic only when asked, and says so", () => {
     const a = houseAt(-104.9449, 34.7801);
     const b = houseAt(-104.9449, 34.7801);
     assert.deepEqual(a.rooms, ["Living", "Kitchen", "Bedroom", "Bath"]);
     assert.equal(a.bearing, b.bearing);
-    assert.equal(a.fitted, false);
-    assert.equal(a.features.features.length, b.features.features.length);
-    assert.ok(a.features.features.some((f) => f.properties?.part === "wall"));
-    assert.ok(a.features.features.some((f) => f.properties?.title === "Sofa"));
+    assert.match(String(a.features.features[0]?.properties?.detail), /Not a measured floor plan/);
   });
 
-  it("fits the plan to a footprint instead of a random angle", () => {
+  it("fits a schematic to a footprint instead of a random angle", () => {
     const ring: [number, number][] = [
       [-104.9452, 34.78],
       [-104.9446, 34.78],
@@ -37,14 +34,56 @@ describe("interior instance", () => {
     assert.equal(pointInRing(-104.9449, 34.78015, ring), true);
     const frame = frameFromRing(ring);
     assert.ok(frame);
-    assert.ok((frame?.width ?? 0) > (frame?.depth ?? 0));
     const picked = pickFootprint([ring], -104.9449, 34.78015);
-    assert.equal(picked?.bearing, frame?.bearing);
+    assert.equal(picked?.frame.bearing, frame?.bearing);
+    assert.equal(picked?.ring.length, ring.length);
     const loose = floorSpan(-104.9449, 34.78015);
     const fitted = floorSpan(-104.9449, 34.78015, frame ?? undefined);
-    assert.equal(fitted.house.fitted, true);
     assert.ok(fitted.max > loose.max);
-    assert.match(String(fitted.house.features.features[0]?.properties?.detail), /footprint/);
+  });
+
+  it("shells the real footprint and does not invent rooms", () => {
+    const ring: [number, number][] = [
+      [-104.94505, 34.78005],
+      [-104.94485, 34.78005],
+      [-104.94485, 34.78018],
+      [-104.94505, 34.78018],
+      [-104.94505, 34.78005],
+    ];
+    const shell = shellFromRing(ring, { title: "1035", levels: "1" });
+    const floors = shell.features.filter((f) => f.properties?.part === "floor");
+    assert.equal(floors.length, 1);
+    assert.equal(floors[0]?.properties?.title, "1035");
+    assert.match(String(floors[0]?.properties?.detail), /not invented/);
+    assert.ok(shell.features.filter((f) => f.properties?.part === "wall").length >= 4);
+  });
+
+  it("uses mapped room names and cuts a door", () => {
+    const plan = planFromSurvey(
+      [
+        {
+          type: "Feature",
+          geometry: {
+            type: "Polygon",
+            coordinates: [[
+              [-104.945, 34.78],
+              [-104.9449, 34.78],
+              [-104.9449, 34.78008],
+              [-104.945, 34.78008],
+              [-104.945, 34.78],
+            ]],
+          },
+          properties: { title: "Kitchen", level: "0" },
+        },
+      ],
+      [[-104.94495, 34.78]],
+    );
+    assert.equal(plan.measured, true);
+    assert.deepEqual(plan.levels, ["0"]);
+    const floor = plan.features.features.find((f) => f.properties?.part === "floor");
+    assert.equal(floor?.properties?.title, "Kitchen");
+    assert.equal(floor?.properties?.color, "#d4c2a0");
+    assert.match(String(floor?.properties?.detail), /Measured room geometry/);
   });
 
   it("does not snap to a building that is far away", () => {

@@ -53,7 +53,7 @@ import { cn } from "@/lib/utils";
 import { destination, wrapBearing } from "@/lib/spatial";
 import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground";
 import { assetsFromGround } from "@/lib/proc-assets";
-import { houseAt, pickFootprint } from "@/lib/interior";
+import { pickFootprint, planFromSurvey, shellFromRing } from "@/lib/interior";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
   densityObject,
@@ -87,6 +87,7 @@ export type WorldMapHandle = {
   flyTo: (lng: number, lat: number, zoom?: number) => void;
   enterWalk: (lng?: number, lat?: number) => void;
   enterInterior: (lng: number, lat: number) => void;
+  setInteriorLevel: (level: string) => void;
   exitInterior: () => void;
   dropToDistricts: (zoneClass?: string | null) => void;
   holdKey: (code: string, down: boolean) => void;
@@ -117,6 +118,7 @@ type WorldMapProps = {
   zoneFilter?: string | null;
   onScene?: (scene: SceneSample | null) => void;
   patches?: ZonePatch[];
+  onInteriorMeta?: (meta: { measured: boolean; levels: string[]; note: string }) => void;
 };
 
 function isCoarsePointer(): boolean {
@@ -1700,6 +1702,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     zoneFilter = null,
     onScene,
     patches = [],
+    onInteriorMeta,
   },
   ref,
 ) {
@@ -1718,6 +1721,9 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
   const patchesRef = useRef(patches);
   const keysRef = useRef(new Set<string>());
   const indoorsRef = useRef(false);
+  const interiorToken = useRef(0);
+  const interiorMetaRef = useRef(onInteriorMeta);
+  interiorMetaRef.current = onInteriorMeta;
   const speedRef = useRef(0);
   const onSceneRef = useRef(onScene);
   const hoverCbRef = useRef(onHover);
@@ -1862,25 +1868,91 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       } catch {
         /* building tiles not in yet */
       }
-      const house = houseAt(lng, lat, pickFootprint(rings, lng, lat));
-      (map.getSource("interior") as GeoJSONSource | undefined)?.setData(house.features);
-      for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
-        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      const hit = pickFootprint(rings, lng, lat);
+      const show = (fc: GeoJSON.FeatureCollection, center: [number, number]) => {
+        (map.getSource("interior") as GeoJSONSource | undefined)?.setData(fc);
+        for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
+          if (map.getLayer(id)) {
+            map.setLayoutProperty(id, "visibility", "visible");
+            map.setFilter(id, null);
+          }
+        }
+        map.easeTo({ center, zoom: 19, pitch: 50, bearing: 0, duration: 700 });
+      };
+      if (hit) {
+        show(shellFromRing(hit.ring), [hit.frame.lng, hit.frame.lat]);
+        interiorMetaRef.current?.({
+          measured: false,
+          levels: ["0"],
+          note: "Footprint only · no 360 scan",
+        });
       }
       for (const id of ["otm-building-3d", "otm-canopy-3d", "trees3d", "rocks3d"]) {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
       }
-      map.easeTo({
-        center: [house.lng, house.lat],
-        zoom: 19,
-        pitch: 55,
-        bearing: house.bearing,
-        duration: 900,
-      });
+      const token = ++interiorToken.current;
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/live?kind=indoor&lat=${lat}&lng=${lng}&west=${lng - 0.001}&south=${lat - 0.001}&east=${lng + 0.001}&north=${lat + 0.001}`,
+          );
+          if (!res.ok || token !== interiorToken.current) return;
+          const data = (await res.json()) as GeoJSON.FeatureCollection;
+          if (token !== interiorToken.current) return;
+          const rooms = data.features.filter(
+            (f) =>
+              f.geometry?.type === "Polygon" &&
+              ["room", "corridor", "area"].includes(String(f.properties?.indoor ?? "")),
+          );
+          const doors = data.features
+            .filter((f) => f.geometry?.type === "Point" && f.properties?.indoor === "door")
+            .map((f) => (f.geometry?.type === "Point" ? (f.geometry.coordinates as [number, number]) : null))
+            .filter((p): p is [number, number] => Boolean(p));
+          const buildings = data.features.filter(
+            (f) => f.geometry?.type === "Polygon" && f.properties?.indoor === "building",
+          );
+          if (rooms.length) {
+            const plan = planFromSurvey(rooms, doors);
+            const floor = plan.features.features.find((f) => f.properties?.part === "floor");
+            const ring = floor?.geometry.type === "Polygon" ? floor.geometry.coordinates[0] : null;
+            const c = ring?.[0];
+            show(plan.features, c ? [c[0], c[1]] : [lng, lat]);
+            const level = plan.levels[0] ?? "0";
+            for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
+              if (map.getLayer(id)) map.setFilter(id, ["==", ["get", "level"], level]);
+            }
+            interiorMetaRef.current?.({ measured: true, levels: plan.levels, note: plan.note });
+            return;
+          }
+          if (buildings.length) {
+            const buildingRings = buildings
+              .map((f) => (f.geometry?.type === "Polygon" ? (f.geometry.coordinates[0] as number[][]) : null))
+              .filter((r): r is number[][] => Boolean(r));
+            const picked = pickFootprint(buildingRings, lng, lat);
+            if (!picked) return;
+            const levels = String(buildings[0]?.properties?.levels ?? "");
+            show(
+              shellFromRing(picked.ring, {
+                title: String(buildings[0]?.properties?.title ?? "Footprint"),
+                levels,
+              }),
+              [picked.frame.lng, picked.frame.lat],
+            );
+            interiorMetaRef.current?.({
+              measured: false,
+              levels: ["0"],
+              note: levels ? `Footprint · ${levels} levels on record · no scan` : "Footprint only · no 360 scan",
+            });
+          }
+        } catch {
+          /* keep the tile footprint */
+        }
+      })();
     },
     exitInterior: () => {
       const map = mapRef.current;
       if (!map) return;
+      interiorToken.current += 1;
       indoorsRef.current = false;
       (map.getSource("interior") as GeoJSONSource | undefined)?.setData({
         type: "FeatureCollection",
@@ -1891,6 +1963,13 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       }
       for (const id of ["otm-building-3d", "otm-canopy-3d", "trees3d", "rocks3d"]) {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+    },
+    setInteriorLevel: (level: string) => {
+      const map = mapRef.current;
+      if (!map) return;
+      for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
+        if (map.getLayer(id)) map.setFilter(id, ["==", ["get", "level"], level]);
       }
     },
     dropToDistricts: (_zoneClass?: string | null) => {

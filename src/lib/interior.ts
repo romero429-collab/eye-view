@@ -2,10 +2,8 @@ import type { Feature, FeatureCollection, Position } from "geojson";
 import { destination, haversineMeters } from "./spatial.ts";
 import { mulberry32 } from "./proc-assets.ts";
 
-/** Our interior instance. Same look-at, same rooms.
- *  When a building footprint is under the look-at, the plan uses that
- *  footprint's center, long axis, and size so it does not cut through
- *  the volume. Not a listing scan. */
+/** Interiors. Measured OSM rooms when a building has been mapped.
+ *  Otherwise the real footprint shell. We do not invent a Zillow plan. */
 
 const WIDTH = 13;
 const DEPTH = 10;
@@ -29,6 +27,8 @@ export type HouseInstance = {
   features: FeatureCollection;
 };
 
+export type FootprintHit = { frame: HouseFrame; ring: Position[] };
+
 function seedFromLngLat(lng: number, lat: number): number {
   const x = Math.round(lng * 1e5);
   const y = Math.round(lat * 1e5);
@@ -45,12 +45,7 @@ function corner(lng: number, lat: number, bearing: number, x: number, y: number)
   return shift(right.lng, right.lat, bearing, y);
 }
 
-function ringLngLat(
-  lng: number,
-  lat: number,
-  bearing: number,
-  local: Array<[number, number]>,
-): Position[] {
+function ringLngLat(lng: number, lat: number, bearing: number, local: Array<[number, number]>): Position[] {
   return local.map(([x, y]) => {
     const p = corner(lng, lat, bearing, x, y);
     return [p.lng, p.lat];
@@ -64,10 +59,9 @@ function feat(
   local: Array<[number, number]>,
   properties: Record<string, string | number | boolean | null>,
 ): Feature {
-  const ring = ringLngLat(lng, lat, bearing, local);
   return {
     type: "Feature",
-    geometry: { type: "Polygon", coordinates: [ring] },
+    geometry: { type: "Polygon", coordinates: [ringLngLat(lng, lat, bearing, local)] },
     properties,
   };
 }
@@ -182,35 +176,30 @@ export function frameFromRing(ring: Position[]): HouseFrame | null {
   return { lng, lat, bearing, width, depth };
 }
 
-/** Prefer the footprint that contains the look-at. Otherwise the nearest
- *  centroid within 40 m. Smallest area wins when several contain the point. */
-export function pickFootprint(rings: Position[][], lng: number, lat: number): HouseFrame | null {
-  let best: HouseFrame | null = null;
+export function pickFootprint(rings: Position[][], lng: number, lat: number): FootprintHit | null {
+  let best: FootprintHit | null = null;
   let bestArea = Infinity;
-  let nearest: HouseFrame | null = null;
+  let nearest: FootprintHit | null = null;
   let nearestD = 40;
   for (const ring of rings) {
     const frame = frameFromRing(ring);
     if (!frame) continue;
+    const hit = { frame, ring };
     const area = frame.width * frame.depth;
     if (pointInRing(lng, lat, ring) && area < bestArea) {
-      best = frame;
+      best = hit;
       bestArea = area;
     }
     const d = haversineMeters(lng, lat, frame.lng, frame.lat);
     if (d < nearestD) {
-      nearest = frame;
+      nearest = hit;
       nearestD = d;
     }
   }
   return best ?? nearest;
 }
 
-export function houseAt(
-  lng: number,
-  lat: number,
-  frame?: HouseFrame | null,
-): HouseInstance {
+export function houseAt(lng: number, lat: number, frame?: HouseFrame | null): HouseInstance {
   const rng = mulberry32(seedFromLngLat(lng, lat));
   const fitted = Boolean(frame);
   const originLng = frame?.lng ?? lng;
@@ -223,16 +212,14 @@ export function houseAt(
   const doorGap = 0.65 * u;
   const features: Feature[] = [];
   const note = fitted
-    ? "Interior fitted to the building footprint under this look-at. Other volumes are hidden so they do not cut the rooms."
-    : "Interior at this look-at. No building footprint was loaded, so it is not snapped to a roof.";
-
+    ? "Schematic fitted to the footprint. Not a measured floor plan."
+    : "Schematic at this look-at. Not a measured floor plan.";
   const rooms: Array<{ id: string; label: string; box: [number, number, number, number]; color: string }> = [
     { id: "living", label: "Living", box: [-hx + 0.15 * u, -hy + 0.15 * u, -0.12 * u, 0.15 * u], color: "#c4b89a" },
     { id: "kitchen", label: "Kitchen", box: [0.12 * u, -hy + 0.15 * u, hx - 0.15 * u, 0.15 * u], color: "#d4c2a0" },
     { id: "bed", label: "Bedroom", box: [-hx + 0.15 * u, 0.35 * u, 1.05 * u, hy - 0.15 * u], color: "#9bb8b0" },
     { id: "bath", label: "Bath", box: [1.25 * u, 0.35 * u, hx - 0.15 * u, hy - 0.15 * u], color: "#8a9aa0" },
   ];
-
   for (const room of rooms) {
     const [x0, y0, x1, y1] = room.box;
     features.push(
@@ -240,7 +227,6 @@ export function houseAt(
         kind: "building",
         part: "floor",
         title: room.label,
-        room: room.id,
         height: 0.08,
         base: 0,
         color: room.color,
@@ -250,7 +236,6 @@ export function houseAt(
       }),
     );
   }
-
   const walls: Array<[number, number, number, number]> = [
     [-hx, hy, hx, hy],
     [-hx, -hy, -hx, hy],
@@ -273,12 +258,9 @@ export function houseAt(
         base: 0.08,
         color: "#6a5340",
         detail: note,
-        lng: originLng,
-        lat: originLat,
       }),
     );
   }
-
   const furn: Array<{ title: string; box: [number, number, number, number]; h: number; color: string }> = [
     { title: "Sofa", box: [-4.6 * u, -3.4 * u, -1.8 * u, -2.3 * u], h: 0.72, color: "#5a4638" },
     { title: "Table", box: [-3.6 * u, -1.8 * u, -2.4 * u, -0.8 * u], h: 0.42, color: "#8a7a62" },
@@ -297,12 +279,9 @@ export function houseAt(
         base: 0.08,
         color: item.color,
         detail: note,
-        lng: originLng,
-        lat: originLat,
       }),
     );
   }
-
   const door = corner(originLng, originLat, bearing, 0, -hy - 3.2 * u);
   return {
     lng: originLng,
@@ -312,5 +291,221 @@ export function houseAt(
     rooms: rooms.map((r) => r.label),
     fitted,
     features: { type: "FeatureCollection", features },
+  };
+}
+
+function offsetPoint(lng: number, lat: number, bearing: number, meters: number) {
+  return destination(lng, lat, bearing, meters);
+}
+
+function wallOnEdge(a: Position, b: Position, thick: number): Position[] | null {
+  const len = haversineMeters(a[0], a[1], b[0], b[1]);
+  if (len < 0.35) return null;
+  const along = edgeBearing(a, b);
+  const perp = (along + 90) % 360;
+  const a1 = offsetPoint(a[0], a[1], perp, thick / 2);
+  const a2 = offsetPoint(a[0], a[1], perp + 180, thick / 2);
+  const b1 = offsetPoint(b[0], b[1], perp, thick / 2);
+  const b2 = offsetPoint(b[0], b[1], perp + 180, thick / 2);
+  return [
+    [a1.lng, a1.lat],
+    [b1.lng, b1.lat],
+    [b2.lng, b2.lat],
+    [a2.lng, a2.lat],
+    [a1.lng, a1.lat],
+  ];
+}
+
+function alongEdge(a: Position, b: Position, p: Position): number | null {
+  const len = haversineMeters(a[0], a[1], b[0], b[1]);
+  if (len < 0.35) return null;
+  const toP = edgeBearing(a, p);
+  const along = edgeBearing(a, b);
+  const delta = ((toP - along + 540) % 360) - 180;
+  const dist = haversineMeters(a[0], a[1], p[0], p[1]);
+  const cross = dist * Math.sin((delta * Math.PI) / 180);
+  const t = dist * Math.cos((delta * Math.PI) / 180);
+  if (Math.abs(cross) > 1.4) return null;
+  if (t < 0.2 || t > len - 0.2) return null;
+  return t;
+}
+
+function pointAlong(a: Position, b: Position, meters: number): Position {
+  const len = haversineMeters(a[0], a[1], b[0], b[1]) || 1;
+  const br = edgeBearing(a, b);
+  const p = offsetPoint(a[0], a[1], br, Math.max(0, Math.min(len, meters)));
+  return [p.lng, p.lat];
+}
+
+function segmentsWithDoors(a: Position, b: Position, doors: Position[]): Array<[Position, Position]> {
+  const len = haversineMeters(a[0], a[1], b[0], b[1]);
+  const gaps: Array<[number, number]> = [];
+  for (const door of doors) {
+    const t = alongEdge(a, b, door);
+    if (t == null) continue;
+    gaps.push([Math.max(0.15, t - 0.45), Math.min(len - 0.15, t + 0.45)]);
+  }
+  gaps.sort((p, q) => p[0] - q[0]);
+  const out: Array<[Position, Position]> = [];
+  let cursor = 0;
+  for (const [g0, g1] of gaps) {
+    if (g0 - cursor > 0.4) out.push([pointAlong(a, b, cursor), pointAlong(a, b, g0)]);
+    cursor = Math.max(cursor, g1);
+  }
+  if (len - cursor > 0.4) out.push([pointAlong(a, b, cursor), pointAlong(a, b, len)]);
+  return out.length ? out : [[a, b]];
+}
+
+const ROOM_COLOR: Record<string, string> = {
+  bedroom: "#9bb8b0",
+  bed: "#9bb8b0",
+  kitchen: "#d4c2a0",
+  bathroom: "#8a9aa0",
+  toilets: "#8a9aa0",
+  living: "#c4b89a",
+  lounge: "#c4b89a",
+  corridor: "#b7b1a4",
+  hallway: "#b7b1a4",
+  stairs: "#8a7a62",
+};
+
+function roomColor(label: string): string {
+  const key = label.toLowerCase();
+  for (const [name, color] of Object.entries(ROOM_COLOR)) {
+    if (key.includes(name)) return color;
+  }
+  return "#c4b89a";
+}
+
+function polyFeature(
+  ring: Position[],
+  properties: Record<string, string | number | boolean | null>,
+): Feature {
+  const closed =
+    ring.length > 0 && ring[0]![0] === ring[ring.length - 1]![0] && ring[0]![1] === ring[ring.length - 1]![1]
+      ? ring
+      : [...ring, ring[0]!];
+  return {
+    type: "Feature",
+    geometry: { type: "Polygon", coordinates: [closed] },
+    properties,
+  };
+}
+
+const SCAN_NOTE =
+  "Measured room geometry (OpenStreetMap indoor). This is the mapped plan, not a guessed layout.";
+const SHELL_NOTE =
+  "No 360 scan for this building. Zillow's floor plan is captured on site. This outline is the real footprint only — rooms are not invented.";
+
+export function shellFromRing(
+  ring: Position[],
+  extra: { title?: string; level?: string; levels?: string } = {},
+): FeatureCollection {
+  const pts = openRing(ring);
+  const level = extra.level ?? "0";
+  const features: Feature[] = [
+    polyFeature(pts, {
+      kind: "building",
+      part: "floor",
+      title: extra.title || "Footprint",
+      level,
+      height: 0.06,
+      base: 0,
+      color: "#c4b89a",
+      detail: extra.levels ? `${SHELL_NOTE} Levels: ${extra.levels}.` : SHELL_NOTE,
+      measured: false,
+    }),
+  ];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    if (!a || !b) continue;
+    const quad = wallOnEdge(a, b, 0.2);
+    if (!quad) continue;
+    features.push(
+      polyFeature(quad, {
+        kind: "building",
+        part: "wall",
+        title: "Wall",
+        level,
+        height: 2.6,
+        base: 0.06,
+        color: "#6a5340",
+        detail: SHELL_NOTE,
+        measured: false,
+      }),
+    );
+  }
+  return { type: "FeatureCollection", features };
+}
+
+export type MeasuredPlan = {
+  features: FeatureCollection;
+  levels: string[];
+  measured: boolean;
+  note: string;
+};
+
+/** Real indoor polygons become the plan. Doors cut gaps. No synthetic rooms. */
+export function planFromSurvey(
+  rooms: Feature[],
+  doors: Position[] = [],
+): MeasuredPlan {
+  const features: Feature[] = [];
+  const levels = new Set<string>();
+  for (const room of rooms) {
+    if (room.geometry?.type !== "Polygon") continue;
+    const ring = room.geometry.coordinates[0] as Position[];
+    const props = (room.properties ?? {}) as Record<string, unknown>;
+    const level = String(props.level ?? "0").split(";")[0] || "0";
+    levels.add(level);
+    const title = String(props.title ?? props.name ?? props.room ?? "Room");
+    const height = Number(props.height);
+    const wallH = Number.isFinite(height) && height > 1.5 ? height : 2.6;
+    features.push(
+      polyFeature(openRing(ring), {
+        kind: "building",
+        part: "floor",
+        title,
+        level,
+        height: 0.06,
+        base: 0,
+        color: roomColor(title),
+        detail: SCAN_NOTE,
+        measured: true,
+      }),
+    );
+    const pts = openRing(ring);
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      if (!a || !b) continue;
+      for (const [s, e] of segmentsWithDoors(a, b, doors)) {
+        const quad = wallOnEdge(s, e, 0.16);
+        if (!quad) continue;
+        features.push(
+          polyFeature(quad, {
+            kind: "building",
+            part: "wall",
+            title: "Wall",
+            level,
+            height: wallH,
+            base: 0.06,
+            color: "#6a5340",
+            detail: SCAN_NOTE,
+            measured: true,
+          }),
+        );
+      }
+    }
+  }
+  const list = [...levels].sort();
+  return {
+    features: { type: "FeatureCollection", features },
+    levels: list,
+    measured: features.length > 0,
+    note: features.length
+      ? `${features.filter((f) => f.properties?.part === "floor").length} measured rooms`
+      : "No measured rooms",
   };
 }

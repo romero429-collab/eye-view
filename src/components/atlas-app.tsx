@@ -73,6 +73,9 @@ export function AtlasApp() {
   const [patches, setPatches] = useState<ZonePatch[]>(() => loadPatches());
   const [reclass, setReclass] = useState("residential");
   const [indoors, setIndoors] = useState(false);
+  const [interiorNote, setInteriorNote] = useState("");
+  const [interiorLevels, setInteriorLevels] = useState<string[]>([]);
+  const [interiorLevel, setInteriorLevel] = useState("0");
   const absorbKey = useRef("");
 
   const scale = useMemo(() => createChoroplethScale(metric), [metric]);
@@ -237,6 +240,8 @@ export function AtlasApp() {
       setIntent(next);
       if (!next.indoors) {
         setIndoors(false);
+        setInteriorNote("");
+        setInteriorLevels([]);
         mapRef.current?.exitInterior();
       }
       if (next.indoors) {
@@ -346,6 +351,8 @@ export function AtlasApp() {
       window.setTimeout(() => mapRef.current?.enterWalk(), 40);
     } else {
       setIndoors(false);
+      setInteriorNote("");
+      setInteriorLevels([]);
       mapRef.current?.exitInterior();
     }
   };
@@ -438,6 +445,11 @@ export function AtlasApp() {
             zoneFilter={intent?.zoneClass ?? null}
             onScene={setScene}
             patches={patches}
+            onInteriorMeta={(meta) => {
+              setInteriorNote(meta.note);
+              setInteriorLevels(meta.levels);
+              setInteriorLevel(meta.levels[0] ?? "0");
+            }}
           />
           <MapTooltip
             hover={hover}
@@ -475,14 +487,25 @@ export function AtlasApp() {
               onMerge={() => applyEdit("merge", reclass, "walk")}
               onExit={() => {
                 setIndoors(false);
+                setInteriorNote("");
+                setInteriorLevels([]);
                 mapRef.current?.exitInterior();
                 setViewMode("godsEye");
               }}
               onHold={(code, down) => mapRef.current?.holdKey(code, down)}
               indoors={indoors}
+              interiorNote={interiorNote}
+              levels={interiorLevels}
+              level={interiorLevel}
+              onLevel={(next) => {
+                setInteriorLevel(next);
+                mapRef.current?.setInteriorLevel(next);
+              }}
               onInside={() => {
                 if (indoors) {
                   setIndoors(false);
+                  setInteriorNote("");
+                  setInteriorLevels([]);
                   mapRef.current?.exitInterior();
                   return;
                 }

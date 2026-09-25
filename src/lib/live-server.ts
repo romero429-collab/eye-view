@@ -29,7 +29,8 @@ export type LiveKind =
   | "geocode"
   | "iot"
   | "ground"
-  | "bugs";
+  | "bugs"
+  | "indoor";
 
 export type LiveQuery = {
   kind: LiveKind;
@@ -1575,6 +1576,52 @@ async function osmGroundFeatures(q: LiveQuery): Promise<Feature[]> {
   return features;
 }
 
+async function indoorFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  if (q.lat == null || q.lng == null) return empty();
+  const lat = q.lat.toFixed(5);
+  const lng = q.lng.toFixed(5);
+  const body = `[out:json][timeout:12];(way["indoor"~"^(room|corridor|area)$"](around:80,${lat},${lng});node["indoor"="door"](around:80,${lat},${lng});way["building"](around:55,${lat},${lng}););out geom 80;`;
+  const elements = await overpassQuery(body);
+  const features: Feature[] = [];
+  for (const el of elements) {
+    const tags = el.tags ?? {};
+    const indoor = tags.indoor || (tags.building ? "building" : "");
+    const title =
+      tags.name ||
+      tags.room ||
+      tags.amenity ||
+      (indoor === "building" ? tags["addr:housenumber"] || "Building" : indoor || "Room");
+    const props = {
+      kind: "building",
+      indoor,
+      title,
+      room: tags.room || tags.amenity || "",
+      level: tags.level || "0",
+      levels: tags["building:levels"] || "",
+      height: tags.height || "",
+      source: "OpenStreetMap indoor",
+      detail: indoor === "building" ? "Building footprint" : "Mapped indoor space",
+    };
+    if (el.type === "node" && el.lat != null && el.lon != null) {
+      features.push(point(el.lon, el.lat, props));
+      continue;
+    }
+    const geom = el.geometry;
+    if (!geom || geom.length < 4) continue;
+    const coords = geom.map((pt) => [pt.lon, pt.lat] as [number, number]);
+    const first = coords[0];
+    const last = coords[coords.length - 1];
+    if (!first || !last) continue;
+    if (first[0] !== last[0] || first[1] !== last[1]) coords.push(first);
+    features.push({
+      type: "Feature",
+      geometry: { type: "Polygon", coordinates: [coords] },
+      properties: props,
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
 async function bugFeatures(q: LiveQuery): Promise<FeatureCollection> {
   const feats = await gbifOccurrences(216, q, 60, { kind: "bug", fallback: "Insect" });
   return { type: "FeatureCollection", features: feats };
@@ -1614,6 +1661,8 @@ export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
       return groundFeatures(q);
     case "bugs":
       return bugFeatures(q);
+    case "indoor":
+      return indoorFeatures(q);
     default:
       return empty();
   }

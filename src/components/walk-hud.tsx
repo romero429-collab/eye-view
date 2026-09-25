@@ -17,6 +17,10 @@ type WalkHudProps = {
   onExit: () => void;
   onHold: (code: string, down: boolean) => void;
   indoors?: boolean;
+  interiorNote?: string;
+  levels?: string[];
+  level?: string;
+  onLevel?: (level: string) => void;
   onInside: () => void;
 };
 
@@ -41,6 +45,10 @@ export function WalkHud({
   onExit,
   onHold,
   indoors = false,
+  interiorNote = "",
+  levels = [],
+  level = "0",
+  onLevel,
   onInside,
 }: WalkHudProps) {
   return (
@@ -61,6 +69,24 @@ export function WalkHud({
               Stand
             </Button>
           </div>
+          {indoors && interiorNote ? (
+            <p className="text-xs leading-snug text-muted">{interiorNote}</p>
+          ) : null}
+          {indoors && levels.length > 1 ? (
+            <div className="flex flex-wrap gap-1">
+              {levels.map((item) => (
+                <Button
+                  key={item}
+                  type="button"
+                  size="sm"
+                  variant={item === level ? "default" : "outline"}
+                  onClick={() => onLevel?.(item)}
+                >
+                  Level {item}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           {immediate || queued > 0 ? (
             <p className="text-xs leading-snug text-muted">
               {immediate ? "Applied now" : "OSM prior"}
