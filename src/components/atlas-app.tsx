@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { Feature } from "geojson";
 import { Compass, Radar } from "lucide-react";
 import { CountryPanel } from "@/components/country-panel";
 import { ObjectPanel } from "@/components/object-panel";
@@ -9,6 +10,7 @@ import { MetricSwitcher } from "@/components/metric-switcher";
 import { LayerPanel, CompactLayers } from "@/components/layer-panel";
 import { HierarchyPanel } from "@/components/hierarchy-panel";
 import { WalkHud } from "@/components/walk-hud";
+import { StreetPane } from "@/components/street-pane";
 import {
   WorldMap,
   resetTransform,
@@ -45,6 +47,7 @@ import {
   type ZoneEdit,
   type ZonePatch,
 } from "@/lib/zone-memory";
+import { nearestShot, shotFromFeature, type StreetShot } from "@/lib/street";
 import {
   formatLat,
   formatLon,
@@ -76,6 +79,8 @@ export function AtlasApp() {
   const [interiorNote, setInteriorNote] = useState("");
   const [interiorLevels, setInteriorLevels] = useState<string[]>([]);
   const [interiorLevel, setInteriorLevel] = useState("0");
+  const [street, setStreet] = useState<StreetShot | null>(null);
+  const [streetNote, setStreetNote] = useState("");
   const absorbKey = useRef("");
 
   const scale = useMemo(() => createChoroplethScale(metric), [metric]);
@@ -353,6 +358,8 @@ export function AtlasApp() {
       setIndoors(false);
       setInteriorNote("");
       setInteriorLevels([]);
+      setStreet(null);
+      setStreetNote("");
       mapRef.current?.exitInterior();
     }
   };
@@ -376,6 +383,11 @@ export function AtlasApp() {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (walking) {
+          if (street) {
+            setStreet(null);
+            setStreetNote("");
+            return;
+          }
           setViewMode("godsEye");
           return;
         }
@@ -387,7 +399,53 @@ export function AtlasApp() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [walking]);
+  }, [walking, street]);
+
+  const openStreet = async () => {
+    if (street) {
+      setStreet(null);
+      setStreetNote("");
+      return;
+    }
+    const lat = scene?.lat ?? look.lat;
+    const lng = scene?.lng ?? look.lon;
+    setStreetNote("Looking for a street photo…");
+    try {
+      const res = await fetch(
+        `/api/live?kind=street&lat=${lat}&lng=${lng}&west=${lng - 0.004}&south=${lat - 0.004}&east=${lng + 0.004}&north=${lat + 0.004}`,
+      );
+      const data = (await res.json()) as { features?: Feature[] };
+      const shots = (data.features ?? []).map(shotFromFeature).filter((item): item is StreetShot => Boolean(item));
+      const near = nearestShot(shots, lng, lat);
+      if (!near) {
+        setStreetNote("No street photos here. Facades exist only where a 360 camera has driven.");
+        return;
+      }
+      setStreetNote("");
+      setStreet(near);
+      mapRef.current?.enterWalk(near.lng, near.lat);
+    } catch {
+      setStreetNote("Street photos did not answer.");
+    }
+  };
+
+  const stepStreet = async (dir: "next" | "prev") => {
+    if (!street) return;
+    const id = dir === "next" ? street.nextId : street.prevId;
+    if (!id) return;
+    try {
+      const res = await fetch(
+        `/api/live?kind=street&name=${encodeURIComponent(id)}&lat=${street.lat}&lng=${street.lng}`,
+      );
+      const data = (await res.json()) as { features?: Feature[] };
+      const next = (data.features ?? []).map(shotFromFeature).find((item): item is StreetShot => Boolean(item));
+      if (!next) return;
+      setStreet(next);
+      mapRef.current?.enterWalk(next.lng, next.lat);
+    } catch {
+      setStreetNote("Could not step to the next photo.");
+    }
+  };
 
   return (
     <div className={cn("flex h-dvh flex-col bg-bg text-fg", (globe || walking) && "orbit")}>
@@ -489,6 +547,8 @@ export function AtlasApp() {
                 setIndoors(false);
                 setInteriorNote("");
                 setInteriorLevels([]);
+                setStreet(null);
+                setStreetNote("");
                 mapRef.current?.exitInterior();
                 setViewMode("godsEye");
               }}
@@ -501,6 +561,8 @@ export function AtlasApp() {
                 setInteriorLevel(next);
                 mapRef.current?.setInteriorLevel(next);
               }}
+              onStreet={() => void openStreet()}
+              streetNote={streetNote}
               onInside={() => {
                 if (indoors) {
                   setIndoors(false);
@@ -514,6 +576,16 @@ export function AtlasApp() {
                 if (lng == null || lat == null) return;
                 setIndoors(true);
                 mapRef.current?.enterInterior(lng, lat);
+              }}
+            />
+          ) : null}
+          {walking && street ? (
+            <StreetPane
+              shot={street}
+              onStep={(dir) => void stepStreet(dir)}
+              onClose={() => {
+                setStreet(null);
+                setStreetNote("");
               }}
             />
           ) : null}

@@ -43,7 +43,7 @@ Satellite stays on. Queries assemble a set; chips still override.
 
 ## Ground walk
 
-Footprints control, or ask `walk here`. WASD: W forward, S back, A turns left, D turns right. Esc or Stand returns to the globe.
+Footprints control, or ask `walk here`. WASD: W forward, S back, A turns left, D turns right. Esc or Stand returns to the globe. **Facades** opens the nearest street-level photo (Panoramax) so you can drag to see the sides of buildings and step to the next capture. Coverage exists only where a camera has driven.
 
 GIS source notes: [docs/gis-sources.md](docs/gis-sources.md). Zoning engines, PostGIS indexing, OSM: [docs/spatial-stack.md](docs/spatial-stack.md). Kiyoshi contract: [docs/kiyoshi.md](docs/kiyoshi.md).
 

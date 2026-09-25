@@ -19,6 +19,7 @@ const KINDS = new Set<LiveKind>([
   "ground",
   "bugs",
   "indoor",
+  "street",
 ]);
 
 export const Route = createFileRoute("/api/live")({

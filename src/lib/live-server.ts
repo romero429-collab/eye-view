@@ -12,6 +12,7 @@ import {
   type GbifVernacular,
 } from "./gbif.ts";
 import { lidarCoverageLine, pickElevation, inUsgsCoverage } from "./ground.ts";
+import { shotsFromPanoramax } from "./street.ts";
 
 export type LiveKind =
   | "transit"
@@ -30,7 +31,8 @@ export type LiveKind =
   | "iot"
   | "ground"
   | "bugs"
-  | "indoor";
+  | "indoor"
+  | "street";
 
 export type LiveQuery = {
   kind: LiveKind;
@@ -1627,6 +1629,47 @@ async function bugFeatures(q: LiveQuery): Promise<FeatureCollection> {
   return { type: "FeatureCollection", features: feats };
 }
 
+async function streetFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  const idOk = q.name != null && /^[a-zA-Z0-9-]{8,80}$/.test(q.name);
+  const boxes: string[] = [];
+  if (idOk && q.name) {
+    boxes.push(`ids=${encodeURIComponent(q.name)}&limit=1`);
+  } else if (q.lat != null && q.lng != null) {
+    const spans = [0.004, 0.02];
+    for (const span of spans) {
+      const west = q.lng - span;
+      const east = q.lng + span;
+      const south = q.lat - span;
+      const north = q.lat + span;
+      boxes.push(`bbox=${west},${south},${east},${north}&limit=12`);
+    }
+  }
+  for (const query of boxes) {
+    const raw = await fetchJson(`https://api.panoramax.xyz/api/search?${query}`, 12000);
+    const shots = shotsFromPanoramax(raw);
+    if (!shots.length) continue;
+    return {
+      type: "FeatureCollection",
+      features: shots.map((shot) =>
+        point(shot.lng, shot.lat, {
+          kind: "street",
+          id: shot.id,
+          title: "Street photo",
+          detail: [shot.producer, shot.when].filter(Boolean).join(" · "),
+          image: shot.image,
+          azimuth: shot.azimuth,
+          when: shot.when,
+          producer: shot.producer,
+          nextId: shot.nextId,
+          prevId: shot.prevId,
+          source: "Panoramax",
+        }),
+      ),
+    };
+  }
+  return empty();
+}
+
 export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
   switch (q.kind) {
     case "transit":
@@ -1663,6 +1706,8 @@ export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
       return bugFeatures(q);
     case "indoor":
       return indoorFeatures(q);
+    case "street":
+      return streetFeatures(q);
     default:
       return empty();
   }

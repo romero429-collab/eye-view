@@ -22,6 +22,8 @@ type WalkHudProps = {
   level?: string;
   onLevel?: (level: string) => void;
   onInside: () => void;
+  onStreet: () => void;
+  streetNote?: string;
 };
 
 const PAD: Array<{ code: string; label: string; className: string }> = [
@@ -50,6 +52,8 @@ export function WalkHud({
   level = "0",
   onLevel,
   onInside,
+  onStreet,
+  streetNote = "",
 }: WalkHudProps) {
   return (
     <>
@@ -65,10 +69,14 @@ export function WalkHud({
             <Button type="button" size="sm" onClick={onInside}>
               {indoors ? "Out" : "Inside"}
             </Button>
+            <Button type="button" size="sm" variant="outline" onClick={onStreet}>
+              Facades
+            </Button>
             <Button type="button" size="sm" variant="outline" onClick={onExit}>
               Stand
             </Button>
           </div>
+          {streetNote ? <p className="text-xs leading-snug text-muted">{streetNote}</p> : null}
           {indoors && interiorNote ? (
             <p className="text-xs leading-snug text-muted">{interiorNote}</p>
           ) : null}
