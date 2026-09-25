@@ -38,7 +38,7 @@ Satellite stays on. Queries assemble a set; chips still override.
 - **Plots** — US lot lines (Regrid) plus OSM buildings / house numbers worldwide. Click a parcel for the site address, or **No site address** when the lot is vacant.
 - **Zoning** — OSM land-use *and* landcover: residential, commercial, industrial, retail, civic, recreation, construction, quarry/landfill, park/wood, farmland, pasture. Legal municipal codes are still sparse.
 - **Wild / Plants / Quakes** — heat maps plus real GIS. Plants are NASA NDVI, GBIF, iNaturalist, OSM trees/cover/hydro — not scenery. Amber is animals, green is vegetation, not a country. Click a cell for a named occurrence. The inspector shows a **reality frame**: look-at coordinates, zone, and country as ground context.
-- **Inside** — Measured rooms when OpenStreetMap has them (names, levels, doors). Otherwise the real footprint only. Zillow's plan is a 360 scan of that house; we do not invent one.
+- **Inside** — Measured rooms when OpenStreetMap has them. Otherwise the real footprint. At street zoom, buildings, trees, rocks, and that shell are textured with the satellite image instead of a flat color.
 - **Rail, Domestic, Health, Transit, Flights, Radar, Alerts, Events**
 
 ## Ground walk

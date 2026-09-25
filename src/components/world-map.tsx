@@ -54,6 +54,7 @@ import { destination, wrapBearing } from "@/lib/spatial";
 import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground";
 import { assetsFromGround } from "@/lib/proc-assets";
 import { pickFootprint, planFromSurvey, shellFromRing } from "@/lib/interior";
+import { createSatelliteDrapeLayer, meshFromPolys, polysFromFeatures, type DrapeLayer } from "@/lib/satellite-drape";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
   densityObject,
@@ -1724,6 +1725,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
   const interiorToken = useRef(0);
   const interiorMetaRef = useRef(onInteriorMeta);
   interiorMetaRef.current = onInteriorMeta;
+  const volumeRef = useRef<{ trees: GeoJSON.FeatureCollection; rocks: GeoJSON.FeatureCollection; interior: GeoJSON.FeatureCollection }>({
+    trees: { type: "FeatureCollection", features: [] },
+    rocks: { type: "FeatureCollection", features: [] },
+    interior: { type: "FeatureCollection", features: [] },
+  });
+  const refreshDrapeRef = useRef<() => void>(() => {});
   const speedRef = useRef(0);
   const onSceneRef = useRef(onScene);
   const hoverCbRef = useRef(onHover);
@@ -1871,6 +1878,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       const hit = pickFootprint(rings, lng, lat);
       const show = (fc: GeoJSON.FeatureCollection, center: [number, number]) => {
         (map.getSource("interior") as GeoJSONSource | undefined)?.setData(fc);
+        volumeRef.current.interior = fc;
+        refreshDrapeRef.current();
         for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
           if (map.getLayer(id)) {
             map.setLayoutProperty(id, "visibility", "visible");
@@ -1958,6 +1967,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         type: "FeatureCollection",
         features: [],
       });
+      volumeRef.current.interior = { type: "FeatureCollection", features: [] };
+      refreshDrapeRef.current();
       for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
       }
@@ -2124,6 +2135,65 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           /* DEM optional */
         }
         map.setRenderWorldCopies(false);
+        const drapeOpacity: Record<string, number> = {
+          "otm-building-3d": 0.88,
+          trees3d: 0.9,
+          rocks3d: 0.92,
+          "interior-floor": 0.95,
+          "interior-walls": 0.94,
+          "interior-furn": 0.96,
+        };
+        const setDrapeHidden = (hidden: boolean) => {
+          if (!map) return;
+          for (const [id, opacity] of Object.entries(drapeOpacity)) {
+            if (!map.getLayer(id)) continue;
+            map.setPaintProperty(id, "fill-extrusion-opacity", hidden ? 0 : opacity);
+          }
+        };
+        const drape: DrapeLayer = createSatelliteDrapeLayer((active) => setDrapeHidden(active));
+        if (!map.getLayer("sat-drape")) map.addLayer(drape);
+        const refreshDrape = () => {
+          const live = map;
+          if (!live) return;
+          if (live.getZoom() < 15) {
+            drape.setMesh(null, live);
+            return;
+          }
+          const features: GeoJSON.Feature[] = [];
+          if (indoorsRef.current) {
+            features.push(...volumeRef.current.interior.features);
+          } else {
+            try {
+              features.push(
+                ...(live.querySourceFeatures("openmaptiles", { sourceLayer: "building" }) as GeoJSON.Feature[]),
+              );
+            } catch {
+              /* tiles not in */
+            }
+            features.push(...volumeRef.current.trees.features, ...volumeRef.current.rocks.features);
+          }
+          const polys = polysFromFeatures(features, 8).map((poly) => {
+            const p0 = poly.ring[0];
+            let ground = 0;
+            if (p0) {
+              try {
+                const elev = live.queryTerrainElevation({ lng: p0[0], lat: p0[1] });
+                const exaggeration = live.getTerrain()?.exaggeration ?? 1;
+                if (typeof elev === "number" && Number.isFinite(elev)) ground = elev * exaggeration;
+              } catch {
+                /* sea level */
+              }
+            }
+            return { ...poly, ground };
+          });
+          drape.setMesh(meshFromPolys(polys, live.getZoom()), live);
+        };
+        refreshDrapeRef.current = refreshDrape;
+        let drapeTimer = 0;
+        map.on("move", () => {
+          window.clearTimeout(drapeTimer);
+          drapeTimer = window.setTimeout(refreshDrape, 400);
+        });
         map.resize();
         emitView();
         setReady(true);
@@ -2906,6 +2976,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
             if (kind === "plants") {
               (map.getSource("plantsLive") as GeoJSONSource | undefined)?.setData(data);
               (map.getSource("trees3d") as GeoJSONSource | undefined)?.setData(stemsFromPlants(data));
+              volumeRef.current.trees = stemsFromPlants(data);
+              refreshDrapeRef.current();
               notes.push(`${data.count ?? data.features.length} plants`);
               return;
             }
@@ -2923,6 +2995,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               (map.getSource("rocks3d") as GeoJSONSource | undefined)?.setData(
                 assetsFromGround({ type: "FeatureCollection", features: rockFeats }),
               );
+              volumeRef.current.rocks = assetsFromGround({ type: "FeatureCollection", features: rockFeats });
+              refreshDrapeRef.current();
               notes.push(`${data.features.length} ground`);
               return;
             }
