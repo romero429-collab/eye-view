@@ -38,7 +38,7 @@ Satellite stays on. Queries assemble a set; chips still override.
 - **Plots** — US lot lines (Regrid) plus OSM buildings / house numbers worldwide. Click a parcel for the site address, or **No site address** when the lot is vacant.
 - **Zoning** — OSM land-use *and* landcover: residential, commercial, industrial, retail, civic, recreation, construction, quarry/landfill, park/wood, farmland, pasture. Legal municipal codes are still sparse.
 - **Wild / Plants / Quakes** — heat maps plus real GIS. Plants are NASA NDVI, GBIF, iNaturalist, OSM trees/cover/hydro — not scenery. Amber is animals, green is vegetation, not a country. Click a cell for a named occurrence. The inspector shows a **reality frame**: look-at coordinates, zone, and country as ground context.
-- **Walk 3D** — Seeded low-poly trunks, canopy lobes, and rocks at each GBIF/OSM lng/lat, extruded on the DEM. Same coordinate always grows the same tree.
+- **Walk 3D** — Seeded low-poly trunks and rocks on the DEM. **Inside** grows a four-room instance at the look-at (living, kitchen, bedroom, bath) and walks you to the door. Same coordinate, same house. Not a listing scan.
 - **Rail, Domestic, Health, Transit, Flights, Radar, Alerts, Events**
 
 ## Ground walk

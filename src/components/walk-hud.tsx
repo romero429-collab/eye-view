@@ -16,6 +16,8 @@ type WalkHudProps = {
   onReclass: () => void;
   onExit: () => void;
   onHold: (code: string, down: boolean) => void;
+  indoors?: boolean;
+  onInside: () => void;
 };
 
 const PAD: Array<{ code: string; label: string; className: string }> = [
@@ -38,6 +40,8 @@ export function WalkHud({
   onReclass,
   onExit,
   onHold,
+  indoors = false,
+  onInside,
 }: WalkHudProps) {
   return (
     <>
@@ -46,10 +50,13 @@ export function WalkHud({
           <div className="flex items-center gap-2">
             <Footprints className="size-3.5 shrink-0 text-primary" strokeWidth={1.75} />
             <p className="min-w-0 truncate text-xs font-medium tracking-wide text-fg">
-              Ground walk
+              {indoors ? "Inside" : "Ground walk"}
               <span className="mx-2 text-border-strong">/</span>
               <span className="text-muted">{learned || zoneLabel || "Looking for zone…"}</span>
             </p>
+            <Button type="button" size="sm" onClick={onInside}>
+              {indoors ? "Out" : "Inside"}
+            </Button>
             <Button type="button" size="sm" variant="outline" onClick={onExit}>
               Stand
             </Button>

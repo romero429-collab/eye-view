@@ -13,6 +13,7 @@ export type MapIntent = {
   locationText: string | null;
   here: boolean;
   walk: boolean;
+  indoors: boolean;
   countryId: string | null;
   countryName: string | null;
   summary: string;
@@ -42,6 +43,8 @@ const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
 
 const WALK_RE =
   /\b(walk|walking|ground[- ]?level|street[- ]?view|traverse|first[- ]?person|drop in|on foot|pedestrian)\b/;
+const INSIDE_RE =
+  /\bwalk inside\b|\bgo inside\b|\benter (?:the )?(?:house|building|home)\b|\binterior\b|\bfloor ?plan\b|\bindoors?\b/;
 const HERE_RE = /\b(here|this (?:spot|place|area|zone|location)|current|nearby|around me)\b/;
 
 const STOP = new Set([
@@ -79,6 +82,7 @@ export const QUERY_EXAMPLES = [
   "what rocks are here",
   "what bugs are here",
   "walk this street",
+  "walk inside",
   "how does transit move here",
   "this is residential",
   "what's changing here",
@@ -132,6 +136,8 @@ function matchCountry(text: string): { id: string; name: string } | null {
 function leftoverLocation(text: string, zoneId: string | null): string | null {
   let leftover = text.toLowerCase();
   leftover = leftover.replace(WALK_RE, " ");
+  leftover = leftover.replace(INSIDE_RE, " ");
+  leftover = leftover.replace(/\b(inside|interior|indoors|indoor|house|home|enter|floor|plan)\b/g, " ");
   leftover = leftover.replace(HERE_RE, " ");
   leftover = leftover.replace(THIS_IS_RE, " ");
   leftover = leftover.replace(SPLIT_RE, " ");
@@ -160,6 +166,7 @@ export function parseMapQuery(raw: string): MapIntent {
       locationText: null,
       here: false,
       walk: false,
+      indoors: false,
       countryId: null,
       countryName: null,
       summary: "",
@@ -167,7 +174,8 @@ export function parseMapQuery(raw: string): MapIntent {
     };
   }
   const lower = text.toLowerCase();
-  const walk = WALK_RE.test(lower);
+  const indoors = INSIDE_RE.test(lower);
+  const walk = WALK_RE.test(lower) || indoors;
   const here = HERE_RE.test(lower);
   const zone = matchZone(lower);
   const edit: ZoneEdit | null = SPLIT_RE.test(lower)
@@ -212,7 +220,7 @@ export function parseMapQuery(raw: string): MapIntent {
   else if (edit === "split") parts.push("Split district");
   else if (edit === "merge") parts.push(zone ? `Merge into ${zone.label.toLowerCase()}` : "Merge district");
   else if (edit === "tag") parts.push("Tag this look-at");
-  if (walk) parts.push("Ground walk");
+  if (walk) parts.push(indoors ? "Interior instance" : "Ground walk");
   if (overlays.length && !edit) {
     parts.push(overlays.map((id) => id).join(" + "));
   }
@@ -230,6 +238,7 @@ export function parseMapQuery(raw: string): MapIntent {
     locationText: country ? country.name : locationText,
     here: here || Boolean(edit),
     walk,
+    indoors,
     countryId: country?.id ?? null,
     countryName: country?.name ?? null,
     summary: parts.join(" · ") || text,
@@ -240,7 +249,7 @@ export function parseMapQuery(raw: string): MapIntent {
 export function assembleOverlays(intent: MapIntent): OverlayState {
   const next: OverlayState = { ...DEFAULT_OVERLAYS, metric: false, labels: true };
   for (const id of intent.overlays) next[id] = true;
-  if (intent.walk) {
+  if (intent.walk || intent.indoors) {
     next.streets = true;
     next.plots = true;
     next.plants = true;

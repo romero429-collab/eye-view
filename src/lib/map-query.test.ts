@@ -36,6 +36,15 @@ describe("parseMapQuery", () => {
     assert.ok(intent.overlays.includes("zoning"));
   });
 
+  it("opens our interior instance instead of a street walk", () => {
+    const intent = parseMapQuery("walk inside");
+    assert.equal(intent.kind, "walk");
+    assert.equal(intent.walk, true);
+    assert.equal(intent.indoors, true);
+    assert.equal(intent.locationText, null);
+    assert.match(intent.summary, /Interior instance/);
+  });
+
   it("drops into ground walk", () => {
     const intent = parseMapQuery("walk this street");
     assert.equal(intent.kind, "walk");

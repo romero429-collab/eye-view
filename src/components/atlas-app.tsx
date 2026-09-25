@@ -72,6 +72,7 @@ export function AtlasApp() {
   const [attention, setAttention] = useState<AttentionMap>(() => loadAttention());
   const [patches, setPatches] = useState<ZonePatch[]>(() => loadPatches());
   const [reclass, setReclass] = useState("residential");
+  const [indoors, setIndoors] = useState(false);
   const absorbKey = useRef("");
 
   const scale = useMemo(() => createChoroplethScale(metric), [metric]);
@@ -234,6 +235,23 @@ export function AtlasApp() {
   const applyIntent = useCallback(
     (next: MapIntent, address?: MapObject) => {
       setIntent(next);
+      if (!next.indoors) {
+        setIndoors(false);
+        mapRef.current?.exitInterior();
+      }
+      if (next.indoors) {
+        setOverlays(assembleOverlays(next));
+        inspectCountry(null);
+        const lng = address?.lng ?? scene?.lng;
+        const lat = address?.lat ?? scene?.lat;
+        setViewMode("walk");
+        setIndoors(true);
+        window.setTimeout(() => {
+          if (lng != null && lat != null) mapRef.current?.enterInterior(lng, lat);
+          else mapRef.current?.enterWalk();
+        }, 450);
+        return;
+      }
       if (next.edit) {
         setOverlays(assembleOverlays(next));
         inspectCountry(null);
@@ -326,6 +344,9 @@ export function AtlasApp() {
     if (mode === "walk") {
       setOverlays((prev) => ({ ...prev, streets: true, plots: true, labels: true }));
       window.setTimeout(() => mapRef.current?.enterWalk(), 40);
+    } else {
+      setIndoors(false);
+      mapRef.current?.exitInterior();
     }
   };
 
@@ -452,8 +473,25 @@ export function AtlasApp() {
               onTag={() => applyEdit("tag", learned?.class ?? scene?.zoneClass ?? null, "walk")}
               onSplit={() => applyEdit("split", reclass, "walk")}
               onMerge={() => applyEdit("merge", reclass, "walk")}
-              onExit={() => setViewMode("godsEye")}
+              onExit={() => {
+                setIndoors(false);
+                mapRef.current?.exitInterior();
+                setViewMode("godsEye");
+              }}
               onHold={(code, down) => mapRef.current?.holdKey(code, down)}
+              indoors={indoors}
+              onInside={() => {
+                if (indoors) {
+                  setIndoors(false);
+                  mapRef.current?.exitInterior();
+                  return;
+                }
+                const lng = scene?.lng;
+                const lat = scene?.lat;
+                if (lng == null || lat == null) return;
+                setIndoors(true);
+                mapRef.current?.enterInterior(lng, lat);
+              }}
             />
           ) : null}
           {intent && !walking ? (

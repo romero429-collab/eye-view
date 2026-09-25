@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils";
 import { destination, wrapBearing } from "@/lib/spatial";
 import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground";
 import { assetsFromGround } from "@/lib/proc-assets";
+import { houseAt } from "@/lib/interior";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
   densityObject,
@@ -85,6 +86,8 @@ export type WorldMapHandle = {
   reset: () => void;
   flyTo: (lng: number, lat: number, zoom?: number) => void;
   enterWalk: (lng?: number, lat?: number) => void;
+  enterInterior: (lng: number, lat: number) => void;
+  exitInterior: () => void;
   dropToDistricts: (zoneClass?: string | null) => void;
   holdKey: (code: string, down: boolean) => void;
   setHeldKeys: (codes: string[]) => void;
@@ -292,6 +295,10 @@ function buildStyle(): StyleSpecification {
         data: { type: "FeatureCollection", features: [] },
       },
       rocks3d: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      interior: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
@@ -950,6 +957,49 @@ function buildStyle(): StyleSpecification {
         },
       },
       {
+        id: "interior-floor",
+        type: "fill-extrusion",
+        source: "interior",
+        minzoom: 16,
+        filter: ["==", ["get", "part"], "floor"],
+        layout: { visibility: "none" },
+        paint: {
+          "fill-extrusion-color": ["coalesce", ["get", "color"], "#c4b89a"],
+          "fill-extrusion-height": ["coalesce", ["get", "height"], 0.08],
+          "fill-extrusion-base": 0,
+          "fill-extrusion-opacity": 0.95,
+        },
+      },
+      {
+        id: "interior-walls",
+        type: "fill-extrusion",
+        source: "interior",
+        minzoom: 16,
+        filter: ["==", ["get", "part"], "wall"],
+        layout: { visibility: "none" },
+        paint: {
+          "fill-extrusion-color": ["coalesce", ["get", "color"], "#6a5340"],
+          "fill-extrusion-height": ["coalesce", ["get", "height"], 2.6],
+          "fill-extrusion-base": ["coalesce", ["get", "base"], 0.08],
+          "fill-extrusion-opacity": 0.94,
+          "fill-extrusion-vertical-gradient": true,
+        },
+      },
+      {
+        id: "interior-furn",
+        type: "fill-extrusion",
+        source: "interior",
+        minzoom: 16,
+        filter: ["==", ["get", "part"], "furn"],
+        layout: { visibility: "none" },
+        paint: {
+          "fill-extrusion-color": ["coalesce", ["get", "color"], "#5a4638"],
+          "fill-extrusion-height": ["coalesce", ["get", "height"], 0.6],
+          "fill-extrusion-base": ["coalesce", ["get", "base"], 0.08],
+          "fill-extrusion-opacity": 0.96,
+        },
+      },
+      {
         id: "otm-waterway",
         type: "line",
         source: "openmaptiles",
@@ -1366,6 +1416,8 @@ const AREA_HIT_LAYERS = [
   "otm-canopy-3d",
   "trees3d",
   "rocks3d",
+  "interior-floor",
+  "interior-furn",
   "otm-waterway",
   "wildlife",
   "livestock",
@@ -1417,6 +1469,7 @@ function closestFeature(
 }
 
 function layerName(layerId: string, kind: MapObjectKind): string {
+  if (layerId.startsWith("interior")) return "Inside";
   if (layerId.includes("plants") || kind === "plant" || layerId === "otm-water" || layerId === "ndvi" || layerId === "trees3d" || layerId === "otm-canopy-3d") return "Plants";
   if (layerId.includes("bugs") || kind === "bug") return "Bugs";
   if (layerId === "geology" || layerId === "ditches" || layerId === "otm-waterway" || layerId === "rocks3d" || kind === "rock" || kind === "ditch") return "Ground";
@@ -1788,6 +1841,33 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         pitch: 68,
         duration: 800,
       });
+    },
+    enterInterior: (lng: number, lat: number) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const house = houseAt(lng, lat);
+      (map.getSource("interior") as GeoJSONSource | undefined)?.setData(house.features);
+      for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+      map.easeTo({
+        center: [house.door.lng, house.door.lat],
+        zoom: 18.8,
+        pitch: 62,
+        bearing: house.bearing,
+        duration: 900,
+      });
+    },
+    exitInterior: () => {
+      const map = mapRef.current;
+      if (!map) return;
+      (map.getSource("interior") as GeoJSONSource | undefined)?.setData({
+        type: "FeatureCollection",
+        features: [],
+      });
+      for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+      }
     },
     dropToDistricts: (_zoneClass?: string | null) => {
       const map = mapRef.current;
