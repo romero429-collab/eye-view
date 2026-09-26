@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Feature } from "geojson";
-import { Compass, Radar } from "lucide-react";
+import { Compass, Layers, Radar } from "lucide-react";
 import { CountryPanel } from "@/components/country-panel";
 import { ObjectPanel } from "@/components/object-panel";
 import { MapQuery } from "@/components/map-query";
 import { MapLegend, OverlayKey } from "@/components/map-legend";
 import { MapTooltip } from "@/components/map-tooltip";
 import { MetricSwitcher } from "@/components/metric-switcher";
-import { LayerPanel, CompactLayers } from "@/components/layer-panel";
+import { LayerPanel } from "@/components/layer-panel";
 import { HierarchyPanel } from "@/components/hierarchy-panel";
 import { WalkHud } from "@/components/walk-hud";
 import { StreetPane } from "@/components/street-pane";
+import { WeatherHud } from "@/components/weather-hud";
 import {
   WorldMap,
   resetTransform,
@@ -23,7 +24,8 @@ import { COUNTRIES, lookupCountry } from "@/lib/countries";
 import { type MetricId } from "@/lib/metrics";
 import type { GlobeRotation, HoverInfo, MapObject, MapTransform, ViewMode } from "@/lib/map-types";
 import { HOME_ROTATION } from "@/lib/map-types";
-import { altitudeFromZoom, DEFAULT_OVERLAYS, DISTRICT_VIEW, HOME_VIEW, type OverlayId } from "@/lib/basemaps";
+import { altitudeFromZoom, DEFAULT_OVERLAYS, DISTRICT_VIEW, HOME_VIEW, IMAGERY, type ImageryId, type OverlayId } from "@/lib/basemaps";
+import { WEATHER_LEVELS, type WeatherLevelId } from "@/lib/weather-levels";
 import { assembleOverlays, type MapIntent, QUERY_EXAMPLES } from "@/lib/map-query";
 import { coordinateToggle, evaluateRules, needsDistrictScale, type SceneSample } from "@/lib/zoning-rules";
 import {
@@ -69,6 +71,9 @@ export function AtlasApp() {
   const [overlays, setOverlays] = useState(DEFAULT_OVERLAYS);
   const [liveNote, setLiveNote] = useState("");
   const [hudOpen, setHudOpen] = useState(true);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [imagery, setImagery] = useState<ImageryId>("esri");
+  const [weatherLevel, setWeatherLevel] = useState<WeatherLevelId>("radar");
   const [picked, setPicked] = useState<MapObject | null>(null);
   const [intent, setIntent] = useState<MapIntent | null>(null);
   const [scene, setScene] = useState<SceneSample | null>(null);
@@ -498,6 +503,8 @@ export function AtlasApp() {
             onRotation={setRotation}
             onSizeChange={setMapSize}
             overlays={overlays}
+            imagery={imagery}
+            weatherLevel={weatherLevel}
             onLiveNote={setLiveNote}
             onPickObject={onPickObject}
             zoneFilter={intent?.zoneClass ?? null}
@@ -594,80 +601,126 @@ export function AtlasApp() {
               {intent.summary}
             </p>
           ) : null}
-          <div className="pointer-events-none absolute inset-x-3 bottom-3 flex items-end justify-between gap-3 md:inset-x-4 md:bottom-4">
-            <div className="pointer-events-auto flex min-w-0 flex-col gap-2">
-              {hudOpen ? (
-                <>
-                  <div className="hidden md:block">
-                    <LayerPanel
-                      value={overlays}
-                      onToggle={toggleOverlay}
-                      liveNote={
-                        overlays.radar ||
-                        overlays.quakes ||
-                        overlays.transit ||
-                        overlays.flights ||
-                        overlays.alerts ||
-                        overlays.events ||
-                        overlays.wildlife ||
-                        overlays.livestock ||
-                        overlays.health ||
-                        overlays.rail ||
-                        overlays.plots ||
-                        overlays.zoning
-                          ? liveNote
-                          : undefined
-                      }
-                    />
+          <div className="absolute top-12 left-3 z-10 md:top-14 md:left-4">
+            <WeatherHud lat={scene?.lat ?? look.lat} lng={scene?.lng ?? look.lon} />
+            {overlays.radar ? (
+              <div className="mt-1.5 flex max-w-[min(100vw-5.5rem,28rem)] gap-1 overflow-x-auto">
+                {WEATHER_LEVELS.map((level) => (
+                  <button
+                    key={level.id}
+                    type="button"
+                    title={level.detail}
+                    aria-pressed={weatherLevel === level.id}
+                    onClick={() => setWeatherLevel(level.id)}
+                    className={cn(
+                      "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                      weatherLevel === level.id
+                        ? "border-primary bg-primary text-primary-fg"
+                        : "border-border bg-surface text-muted",
+                    )}
+                  >
+                    {level.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex items-end justify-between gap-3 md:inset-x-4 md:bottom-4">
+            <div className="pointer-events-auto flex min-w-0 flex-col items-start gap-2">
+              {hudOpen && layersOpen ? (
+                <div className="max-h-[min(46dvh,24rem)] w-[min(calc(100vw-6.5rem),18rem)] overflow-y-auto overscroll-contain">
+                  <div className="mb-2 rounded-[var(--radius-md)] border border-border bg-surface p-1.5 shadow-[var(--shadow-panel)]">
+                    <p className="px-1.5 pt-0.5 pb-1 text-xs font-medium uppercase tracking-label text-subtle">
+                      Satellite
+                    </p>
+                    <div className="flex flex-col gap-0.5">
+                      {IMAGERY.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          aria-pressed={imagery === item.id}
+                          title={item.detail}
+                          onClick={() => setImagery(item.id)}
+                          className={cn(
+                            "flex min-h-10 items-center justify-between gap-2 rounded-[var(--radius-xs)] px-2 text-left text-sm",
+                            imagery === item.id ? "text-fg" : "text-muted",
+                          )}
+                        >
+                          <span className="font-medium">{item.label}</span>
+                          <span className="truncate text-[11px] text-subtle">
+                            {item.id === "viirs" || item.id === "modis" ? "yesterday" : item.id === "sentinel" ? "2024" : item.id === "usgs" ? "US aerial" : "mosaic"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="md:hidden">
-                    <CompactLayers value={overlays} onToggle={toggleOverlay} />
-                    {liveNote ? (
-                      <p className="mt-1 max-w-[17rem] px-1 text-xs text-subtle">{liveNote}</p>
-                    ) : null}
-                  </div>
-                  <HierarchyPanel
-                    hits={hits}
-                    zoneLabel={learned?.label ?? scene?.zoneLabel}
-                    onDropIn={() => {
-                      setOverlays((prev) => ({ ...prev, zoning: true, streets: true }));
-                      setViewMode("atlas");
-                      window.setTimeout(() => mapRef.current?.dropToDistricts(), 280);
-                    }}
-                    onWalk={() => {
-                      setOverlays((prev) => ({
-                        ...prev,
-                        streets: true,
-                        plots: true,
-                        labels: true,
-                        zoning: true,
-                      }));
-                      setViewMode("walk");
-                      window.setTimeout(() => mapRef.current?.enterWalk(), 40);
-                    }}
-                    onConfirm={confirmLearned}
-                    onDismiss={dismissLearned}
-                    calibration={perception.calibration}
-                    skillCount={perception.minds.skills}
+                  <LayerPanel
+                    value={overlays}
+                    onToggle={toggleOverlay}
+                    liveNote={liveNote || undefined}
                   />
-                  {overlays.metric && !overlays.zoning && !overlays.wildlife && !overlays.plants && !overlays.quakes ? (
-                    <MapLegend metric={metric} stops={scale.stops} />
-                  ) : null}
-                  {overlays.zoning || overlays.wildlife || overlays.quakes || overlays.livestock || overlays.plants || overlays.transit || overlays.bugs || overlays.ground ? (
-                    <OverlayKey
-                      zoning={overlays.zoning && !tooHigh}
-                      wildlife={overlays.wildlife}
-                      quakes={overlays.quakes}
-                      livestock={overlays.livestock}
-                      plants={overlays.plants}
-                      transit={overlays.transit}
-                      bugs={overlays.bugs}
+                  <div className="mt-2">
+                    <HierarchyPanel
+                      hits={hits}
+                      zoneLabel={learned?.label ?? scene?.zoneLabel}
+                      onDropIn={() => {
+                        setOverlays((prev) => ({ ...prev, zoning: true, streets: true }));
+                        setViewMode("atlas");
+                        window.setTimeout(() => mapRef.current?.dropToDistricts(), 280);
+                      }}
+                      onWalk={() => {
+                        setLayersOpen(false);
+                        setOverlays((prev) => ({
+                          ...prev,
+                          streets: true,
+                          plots: true,
+                          labels: true,
+                          zoning: true,
+                        }));
+                        setViewMode("walk");
+                        window.setTimeout(() => mapRef.current?.enterWalk(), 40);
+                      }}
+                      onConfirm={confirmLearned}
+                      onDismiss={dismissLearned}
+                      calibration={perception.calibration}
+                      skillCount={perception.minds.skills}
                     />
+                  </div>
+                  {overlays.metric && !overlays.zoning && !overlays.wildlife && !overlays.plants && !overlays.quakes ? (
+                    <div className="mt-2">
+                      <MapLegend metric={metric} stops={scale.stops} />
+                    </div>
                   ) : null}
-                </>
-              ) : (
-                <CompactLayers value={overlays} onToggle={toggleOverlay} />
-              )}
+                  {overlays.zoning || overlays.wildlife || overlays.quakes || overlays.livestock || overlays.plants || overlays.transit || overlays.bugs || overlays.ground || overlays.health || overlays.flights || overlays.iot ? (
+                    <div className="mt-2">
+                      <OverlayKey
+                        zoning={overlays.zoning && !tooHigh}
+                        wildlife={overlays.wildlife}
+                        quakes={overlays.quakes}
+                        livestock={overlays.livestock}
+                        plants={overlays.plants}
+                        transit={overlays.transit}
+                        bugs={overlays.bugs}
+                        health={overlays.health}
+                        flights={overlays.flights}
+                        stations={overlays.iot}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {hudOpen ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 bg-surface shadow-[var(--shadow-panel)]"
+                  aria-expanded={layersOpen}
+                  onClick={() => setLayersOpen((open) => !open)}
+                >
+                  <Layers className="size-4" strokeWidth={1.75} />
+                  {layersOpen ? "Close" : "Layers"}
+                </Button>
+              ) : null}
             </div>
             <div className="pointer-events-auto">
               <ZoomControls

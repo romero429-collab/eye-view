@@ -101,7 +101,7 @@ export function CompactLayers({
 
 export function LayerPanel({ value, onToggle, liveNote }: LayerPanelProps) {
   return (
-    <div className="max-h-[min(28dvh,12rem)] max-w-[min(100%,18rem)] overflow-y-auto rounded-[var(--radius-md)] border border-border bg-surface p-1.5 shadow-[var(--shadow-panel)] md:max-h-[min(42dvh,24rem)] md:max-w-56 md:p-2">
+    <div className="w-[min(100%,18rem)] rounded-[var(--radius-md)] border border-border bg-surface p-1.5 shadow-[var(--shadow-panel)] md:w-56 md:p-2">
       <OverlayGroup
         title="Over satellite"
         items={OVERLAYS.filter((item) => item.group === "map")}

@@ -11,7 +11,7 @@ import {
 
 describe("heat ramps", () => {
   it("keeps wildlife and quake ramps sequential and labeled", () => {
-    for (const id of ["wildlife", "quakes", "livestock", "health", "plants"] as const) {
+    for (const id of ["wildlife", "quakes", "livestock", "health", "plants", "flights", "stations", "air"] as const) {
       const ramp = HEAT_RAMPS[id];
       assert.ok(ramp.length >= 4);
       assert.equal(ramp[0]?.t, 0);
@@ -26,6 +26,8 @@ describe("heat ramps", () => {
     const expr = heatmapColorExpr("wildlife");
     assert.equal(expr[0], "interpolate");
     assert.ok(expr.includes("#d4a054"));
+    assert.equal(HEAT_RAMPS.health.at(-1)?.color, "#7f1d1d");
+    assert.notEqual(HEAT_RAMPS.health[1]?.color, HEAT_RAMPS.wildlife[1]?.color);
   });
 });
 

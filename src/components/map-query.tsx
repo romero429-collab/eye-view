@@ -230,7 +230,7 @@ export function MapQuery({ onAsk, onPickCountry, examples = QUERY_EXAMPLES }: Ma
         </ul>
       ) : null}
       </div>
-      <div className="mt-1.5 flex flex-wrap gap-1">
+      <div className="mt-1.5 hidden flex-wrap gap-1 sm:flex">
         {examples.map((example) => (
           <button
             key={example}

@@ -40,8 +40,8 @@ function ringPoint(ring: Position[]): Position | null {
   return [lng / n, lat / n];
 }
 
-function loadTile(z: number, x: number, y: number): Promise<ImageData | null> {
-  const key = `${z}/${x}/${y}`;
+function loadTile(z: number, x: number, y: number, template: string = TILES.imagery): Promise<ImageData | null> {
+  const key = `${template}|${z}/${x}/${y}`;
   const hit = pixels.get(key);
   if (hit) return hit;
   const job = new Promise<ImageData | null>((resolve) => {
@@ -68,7 +68,7 @@ function loadTile(z: number, x: number, y: number): Promise<ImageData | null> {
       }
     };
     img.onerror = () => resolve(null);
-    img.src = TILES.imagery.replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
+    img.src = template.replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
   });
   pixels.set(key, job);
   return job;
@@ -83,15 +83,24 @@ function hexFrom(data: ImageData, x: number, y: number): string {
   return `#${h(r)}${h(g)}${h(b)}`;
 }
 
-export async function satelliteColor(lng: number, lat: number, zoom: number): Promise<string | null> {
+export async function satelliteColor(
+  lng: number,
+  lat: number,
+  zoom: number,
+  template?: string,
+): Promise<string | null> {
   const tile = tileOf(lng, lat, zoom);
-  const data = await loadTile(tile.z, tile.x, tile.y);
+  const data = await loadTile(tile.z, tile.x, tile.y, template || TILES.imagery);
   if (!data) return null;
   const px = pixelOf(lng, lat, tile);
   return hexFrom(data, px.x, px.y);
 }
 
-export async function paintSatelliteColors(collection: FeatureCollection, zoom: number): Promise<FeatureCollection> {
+export async function paintSatelliteColors(
+  collection: FeatureCollection,
+  zoom: number,
+  template?: string,
+): Promise<FeatureCollection> {
   const features: Feature[] = [];
   for (const feature of collection.features) {
     const geom = feature.geometry;
@@ -101,7 +110,7 @@ export async function paintSatelliteColors(collection: FeatureCollection, zoom: 
       features.push(feature);
       continue;
     }
-    const color = await satelliteColor(at[0], at[1], zoom);
+    const color = await satelliteColor(at[0], at[1], zoom, template || TILES.imagery);
     if (!color) {
       features.push(feature);
       continue;

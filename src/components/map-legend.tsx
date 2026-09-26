@@ -83,6 +83,9 @@ export function OverlayKey({
   plants,
   transit,
   bugs,
+  health,
+  flights,
+  stations,
 }: {
   zoning: boolean;
   wildlife: boolean;
@@ -91,12 +94,19 @@ export function OverlayKey({
   plants: boolean;
   transit?: boolean;
   bugs?: boolean;
+  health?: boolean;
+  flights?: boolean;
+  stations?: boolean;
 }) {
   const ramps: Array<{ id: HeatRampId; title: string }> = [];
   if (wildlife) ramps.push({ id: "wildlife", title: "Wild" });
   if (livestock) ramps.push({ id: "livestock", title: "Domestic" });
   if (plants) ramps.push({ id: "plants", title: "Plants" });
   if (bugs) ramps.push({ id: "wildlife", title: "Bugs" });
+  if (health) ramps.push({ id: "health", title: "Health" });
+  if (flights) ramps.push({ id: "flights", title: "Altitude" });
+  if (stations) ramps.push({ id: "stations", title: "Stations" });
+  if (stations) ramps.push({ id: "air", title: "Air" });
   if (quakes) ramps.push({ id: "quakes", title: "Quakes" });
   if (!zoning && ramps.length === 0 && !transit) return null;
   return (

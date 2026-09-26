@@ -1,26 +1,26 @@
 import type { ExpressionSpecification } from "maplibre-gl";
 
-/** Sequential ramps for density layers. HUD chrome stays teal;
- *  these colors are data, not brand. */
+/** heatmap-density runs 0–1. Stops are ranks, not counts. Health is yellow to red so it is not the teal HUD. */
 
 export type HeatStop = { t: number; color: string; label: string };
 
-export type HeatRampId = "wildlife" | "livestock" | "plants" | "quakes" | "health";
+export type HeatRampId = "wildlife" | "livestock" | "plants" | "quakes" | "health" | "flights" | "stations" | "air";
 
 export const HEAT_RAMPS: Record<HeatRampId, HeatStop[]> = {
   wildlife: [
     { t: 0, color: "rgba(0,0,0,0)", label: "None" },
-    { t: 0.18, color: "#c4b89a", label: "Sparse" },
-    { t: 0.42, color: "#d4a054", label: "Present" },
-    { t: 0.68, color: "#c45c2a", label: "Busy" },
+    { t: 0.15, color: "rgba(196,184,154,0.55)", label: "Trace" },
+    { t: 0.35, color: "#c4b89a", label: "Sparse" },
+    { t: 0.55, color: "#d4a054", label: "Present" },
+    { t: 0.78, color: "#c45c2a", label: "Busy" },
     { t: 1, color: "#8f2d3a", label: "Dense" },
   ],
   livestock: [
     { t: 0, color: "rgba(0,0,0,0)", label: "None" },
-    { t: 0.2, color: "#9bb8b0", label: "Sparse" },
-    { t: 0.5, color: "#c4b89a", label: "Present" },
-    { t: 0.8, color: "#d4c2a0", label: "Busy" },
-    { t: 1, color: "#e7eaed", label: "Dense" },
+    { t: 0.2, color: "rgba(111,143,134,0.75)", label: "Sparse" },
+    { t: 0.48, color: "#c4b89a", label: "Present" },
+    { t: 0.72, color: "#d4a054", label: "Busy" },
+    { t: 1, color: "#6b4423", label: "Dense" },
   ],
   plants: [
     { t: 0, color: "rgba(0,0,0,0)", label: "None" },
@@ -31,17 +31,42 @@ export const HEAT_RAMPS: Record<HeatRampId, HeatStop[]> = {
   ],
   quakes: [
     { t: 0, color: "rgba(0,0,0,0)", label: "Quiet" },
-    { t: 0.25, color: "#c4b89a", label: "M 2.5" },
-    { t: 0.5, color: "#d4a054", label: "M 4" },
-    { t: 0.75, color: "#c45c2a", label: "M 6" },
-    { t: 1, color: "#8f2d3a", label: "M 7+" },
+    { t: 0.2, color: "rgba(253,224,71,0.8)", label: "M 2.5" },
+    { t: 0.45, color: "#f59e0b", label: "M 4" },
+    { t: 0.7, color: "#dc2626", label: "M 6" },
+    { t: 1, color: "#7f1d1d", label: "M 7+" },
   ],
   health: [
     { t: 0, color: "rgba(0,0,0,0)", label: "Quiet" },
-    { t: 0.25, color: "#1f4d54", label: "Low" },
-    { t: 0.5, color: "#3d8c8e", label: "Moderate" },
-    { t: 0.75, color: "#7ecad4", label: "High" },
-    { t: 1, color: "#d2f1eb", label: "Peak" },
+    { t: 0.16, color: "rgba(253,224,71,0.75)", label: "Low" },
+    { t: 0.38, color: "#f59e0b", label: "Guarded" },
+    { t: 0.58, color: "#ea580c", label: "Moderate" },
+    { t: 0.78, color: "#dc2626", label: "High" },
+    { t: 1, color: "#7f1d1d", label: "Peak" },
+  ],
+  flights: [
+    { t: 0, color: "rgba(0,0,0,0)", label: "None" },
+    { t: 0.14, color: "rgba(178,24,43,0.9)", label: "Ground" },
+    { t: 0.34, color: "#ef8a62", label: "5,000 ft" },
+    { t: 0.52, color: "#f7f7f7", label: "15,000 ft" },
+    { t: 0.72, color: "#67a9cf", label: "28,000 ft" },
+    { t: 1, color: "#2166ac", label: "Cruise" },
+  ],
+  stations: [
+    { t: 0, color: "rgba(0,0,0,0)", label: "None" },
+    { t: 0.25, color: "#2166ac", label: "Cold" },
+    { t: 0.5, color: "#67a9cf", label: "Cool" },
+    { t: 0.75, color: "#ef8a62", label: "Warm" },
+    { t: 1, color: "#b2182b", label: "Hot" },
+  ],
+  air: [
+    { t: 0, color: "rgba(0,0,0,0)", label: "None" },
+    { t: 0.16, color: "#00e400", label: "Good" },
+    { t: 0.33, color: "#ffff00", label: "Moderate" },
+    { t: 0.5, color: "#ff7e00", label: "Sensitive" },
+    { t: 0.66, color: "#ff0000", label: "Unhealthy" },
+    { t: 0.82, color: "#8f3f97", label: "Very" },
+    { t: 1, color: "#7e0023", label: "Hazardous" },
   ],
 };
 

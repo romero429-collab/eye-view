@@ -18,7 +18,8 @@ export type OverlayId =
   | "flights"
   | "alerts"
   | "events"
-  | "iot";
+  | "iot"
+  | "power";
 
 export type OverlayGroup = "map" | "animals" | "live";
 
@@ -126,8 +127,8 @@ export const OVERLAYS: OverlayDef[] = [
   },
   {
     id: "radar",
-    label: "Radar",
-    blurb: "Live precipitation",
+    label: "Weather",
+    blurb: "Radar, global precip, clouds, temperature, sea, snow",
     live: true,
     group: "live",
   },
@@ -173,6 +174,13 @@ export const OVERLAYS: OverlayDef[] = [
     live: true,
     group: "live",
   },
+  {
+    id: "power",
+    label: "Power",
+    blurb: "Lines, substations, and plants",
+    live: true,
+    group: "live",
+  },
 ];
 
 export const DEFAULT_OVERLAYS: OverlayState = {
@@ -196,6 +204,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   alerts: false,
   events: false,
   iot: false,
+  power: false,
 };
 
 export function gibsNdviTileUrl(): string {
@@ -231,8 +240,69 @@ export const TILES = {
     "https://tiles.arcgis.com/tiles/KzeiCaQsMoeCfoCq/arcgis/rest/services/Regrid_Nationwide_Parcel_Boundaries_v1/MapServer/tile/{z}/{y}/{x}",
 } as const;
 
+export type ImageryId = "esri" | "viirs" | "modis" | "sentinel" | "usgs";
+
+function recentDay(): string {
+  return new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function gibsTrueColor(layer: string): string {
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${recentDay()}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+}
+
+/** Pictures of the ground, not overlays. One is visible at a time. */
+export const IMAGERY: Array<{
+  id: ImageryId;
+  label: string;
+  detail: string;
+  tiles: string;
+  maxzoom: number;
+  layerId: string;
+}> = [
+  {
+    id: "esri",
+    label: "Esri",
+    detail: "World Imagery mosaic. Sub-meter in many cities, usually a few years old.",
+    tiles: TILES.imagery,
+    maxzoom: 19,
+    layerId: "imagery",
+  },
+  {
+    id: "viirs",
+    label: "VIIRS",
+    detail: "Suomi NPP true color from yesterday. 375 m, clouds left in.",
+    tiles: gibsTrueColor("VIIRS_SNPP_CorrectedReflectance_TrueColor"),
+    maxzoom: 9,
+    layerId: "imagery-viirs",
+  },
+  {
+    id: "modis",
+    label: "MODIS",
+    detail: "Terra true color from yesterday. 250 m, clouds left in.",
+    tiles: gibsTrueColor("MODIS_Terra_CorrectedReflectance_TrueColor"),
+    maxzoom: 9,
+    layerId: "imagery-modis",
+  },
+  {
+    id: "sentinel",
+    label: "Sentinel-2",
+    detail: "EOX cloudless 2024 mosaic. About 10 m, clouds removed, not today's pass.",
+    tiles: "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg",
+    maxzoom: 14,
+    layerId: "imagery-sentinel",
+  },
+  {
+    id: "usgs",
+    label: "USGS",
+    detail: "USGS aerial photography. Sharp inside the United States, coarse or empty elsewhere.",
+    tiles: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
+    maxzoom: 16,
+    layerId: "imagery-usgs",
+  },
+];
+
 export const TILE_ATTRIBUTION =
-  "NASA GIBS NDVI + GEDI, Mapzen/USGS elevation, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Macrostrat, SoilGrids, Waymarked Trails, Open-Meteo, disease.sh";
+  "NASA GIBS Blue Marble, VIIRS, MODIS, Sentinel-2 cloudless (EOX), USGS Imagery, Mapzen/USGS elevation, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Macrostrat, SoilGrids, Waymarked Trails, Open-Meteo, MET Norway, disease.sh";
 
 export {
   COVER_CLASS_FILTER,

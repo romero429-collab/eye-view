@@ -27,7 +27,10 @@ export type MapObjectKind =
   | "building"
   | "address"
   | "zone"
-  | "sensor";
+  | "sensor"
+  | "radar"
+  | "power"
+  | "place";
 
 export type MapObject = {
   kind: MapObjectKind;

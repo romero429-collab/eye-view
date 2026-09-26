@@ -13,6 +13,11 @@ import {
 } from "./gbif.ts";
 import { lidarCoverageLine, pickElevation, inUsgsCoverage } from "./ground.ts";
 import { shotsFromPanoramax } from "./street.ts";
+import { parseAlerts, parseForecast, parseMetNo, parseNws, type WeatherBrief } from "./weather.ts";
+import { craftKind } from "./craft.ts";
+import { aircraftIdentity } from "./aircraft.ts";
+import { fluFilter, fluRowsFrom, indexFlu, outbreaksFrom, samePlace, sicknessLabel, sicknessLoad, virusFacts } from "./health.ts";
+import { AIR_CURRENT, airFacts, monitorSite, type AirCurrent } from "./air.ts";
 
 export type LiveKind =
   | "transit"
@@ -32,7 +37,9 @@ export type LiveKind =
   | "ground"
   | "bugs"
   | "indoor"
-  | "street";
+  | "street"
+  | "weather"
+  | "power";
 
 export type LiveQuery = {
   kind: LiveKind;
@@ -84,6 +91,23 @@ const FLIGHT_HUBS: Array<[number, number]> = [
   [1.36, 103.99],
   [-33.95, 151.18],
 ];
+
+let lastFlights: FeatureCollection | null = null;
+const flightCache = new Map<string, { at: number; ac: Array<Record<string, unknown>> }>();
+
+async function aircraftNear(lat: number, lon: number, dist: number): Promise<Array<Record<string, unknown>>> {
+  const key = `${lat.toFixed(0)}:${lon.toFixed(0)}:${Math.round(dist / 20)}`;
+  const hit = flightCache.get(key);
+  if (hit && Date.now() - hit.at < 20_000) return hit.ac;
+  const data = (await fetchJson(
+    `https://api.adsb.lol/v2/lat/${lat.toFixed(3)}/lon/${lon.toFixed(3)}/dist/${Math.round(dist)}`,
+    7000,
+  )) as { ac?: Array<Record<string, unknown>>; aircraft?: Array<Record<string, unknown>> } | null;
+  const ac = data?.aircraft ?? data?.ac ?? [];
+  if (ac.length) flightCache.set(key, { at: Date.now(), ac });
+  else if (hit) return hit.ac;
+  return ac;
+}
 
 function empty(): FeatureCollection {
   return { type: "FeatureCollection", features: [] };
@@ -172,10 +196,12 @@ function decodeGtfs(buffer: Uint8Array, agency: string): Feature[] {
         kind: "transit",
         agency,
         title: String(label),
-        detail: [agency, trip && `route ${trip}`, pos.speed != null ? `${Math.round(pos.speed * 3.6)} km/h` : null]
+        detail: [agency, trip && `route ${trip}`, pos.speed != null ? `${Math.round(pos.speed * 2.237)} mph` : null]
           .filter(Boolean)
           .join(" · "),
         bearing: pos.bearing ?? 0,
+        route: trip ? String(trip) : null,
+        speed: pos.speed != null ? Math.round(pos.speed * 2.237) : null,
       }),
     );
   }
@@ -233,25 +259,27 @@ async function flightsFeatures(q: LiveQuery): Promise<FeatureCollection> {
     q.east != null &&
     q.north != null
   ) {
-    const lat = (q.south + q.north) / 2;
-    const lon = (q.west + q.east) / 2;
-    const dist = Math.min(
-      250,
-      Math.max(40, haversineNm(q.south, q.west, q.north, q.east)),
-    );
-    points = [[lat, lon, dist]];
+    const span = haversineNm(q.south, q.west, q.north, q.east);
+    if (span < 280) {
+      const lat = (q.south + q.north) / 2;
+      const lon = (q.west + q.east) / 2;
+      points = [[lat, lon, Math.min(250, Math.max(40, span))]];
+    } else {
+      const midLat = (q.south + q.north) / 2;
+      const midLon = (q.west + q.east) / 2;
+      const cell = Math.min(180, Math.max(60, span / 3));
+      points = [
+        [(q.south + midLat) / 2, (q.west + midLon) / 2, cell],
+        [(q.south + midLat) / 2, (midLon + q.east) / 2, cell],
+        [(midLat + q.north) / 2, (q.west + midLon) / 2, cell],
+        [(midLat + q.north) / 2, (midLon + q.east) / 2, cell],
+      ];
+    }
   } else {
-    points = FLIGHT_HUBS.map(([lat, lon]) => [lat, lon, 80]);
+    points = FLIGHT_HUBS.map(([lat, lon]) => [lat, lon, 120]);
   }
 
-  const chunks = await Promise.all(
-    points.map(async ([lat, lon, dist]) => {
-      const data = (await fetchJson(
-        `https://opendata.adsb.fi/api/v2/lat/${lat.toFixed(3)}/lon/${lon.toFixed(3)}/dist/${Math.round(dist)}`,
-      )) as { ac?: Array<Record<string, unknown>>; aircraft?: Array<Record<string, unknown>> } | null;
-      return data?.aircraft ?? data?.ac ?? [];
-    }),
-  );
+  const chunks = await Promise.all(points.map(([lat, lon, dist]) => aircraftNear(lat, lon, dist)));
 
   const seen = new Set<string>();
   const features: Feature[] = [];
@@ -265,21 +293,44 @@ async function flightsFeatures(q: LiveQuery): Promise<FeatureCollection> {
     const flight = String(ac.flight ?? ac.r ?? hex).trim() || hex;
     const alt = ac.alt_baro;
     const gs = ac.gs;
+    const named = aircraftIdentity(ac.t);
+    const craft = named?.vehicle === "Helicopter" || named?.vehicle === "Gyrocopter" ? "heli" : craftKind(ac.category, ac.t);
     features.push(
       point(lon, lat, {
         kind: "flight",
         title: flight,
         detail: [
+          named ? `${named.make} ${named.model}` : null,
+          craft === "heli" ? "Helicopter" : "Airplane",
           alt != null && alt !== "ground" ? `${Math.round(Number(alt))} ft` : "On ground",
           gs != null ? `${Math.round(Number(gs))} kt` : null,
         ]
           .filter(Boolean)
           .join(" · "),
         bearing: Number(ac.track ?? 0),
+        altitude: alt != null && alt !== "ground" && Number.isFinite(Number(alt)) ? Math.round(Number(alt)) : null,
+        speed: gs != null && Number.isFinite(Number(gs)) ? Math.round(Number(gs)) : null,
+        track: Number.isFinite(Number(ac.track)) ? Math.round(Number(ac.track)) : null,
+        hex,
+        aircraft: ac.t ? String(ac.t) : null,
+        make: named?.make ?? null,
+        model: named?.model ?? null,
+        vehicle: named?.vehicle ?? null,
+        engines: named?.engines ?? null,
+        wake: named?.wake ?? null,
+        wtc: named?.wtc ?? "M",
+        mass: named?.mass ?? null,
+        spacing: named?.spacing ?? null,
+        squawk: ac.squawk ? String(ac.squawk) : null,
+        craft,
+        shape: craft === "heli" ? "Helicopter" : "Airplane",
       }),
     );
   }
-  return { type: "FeatureCollection", features };
+  if (features.length === 0 && lastFlights) return lastFlights;
+  const data: FeatureCollection = { type: "FeatureCollection", features };
+  if (features.length) lastFlights = data;
+  return data;
 }
 
 function geomCentroid(geom: Geometry | null | undefined): [number, number] | null {
@@ -606,7 +657,36 @@ type OpenMeteoCurrent = {
 };
 
 type UsgsElev = { value?: string | number };
-type AqiCurrent = { current?: { us_aqi?: number; pm2_5?: number } };
+
+function airSamples(west: number, south: number, east: number, north: number, lat: number, lng: number) {
+  const lats = [lat];
+  const lngs = [lng];
+  const wide = east > west && (east - west > 0.35 || north - south > 0.35);
+  if (wide) {
+    for (const fy of [0.2, 0.5, 0.8]) {
+      for (const fx of [0.2, 0.5, 0.8]) {
+        const y = south + (north - south) * fy;
+        const x = west + (east - west) * fx;
+        if (Math.abs(y - lat) < 0.05 && Math.abs(x - lng) < 0.05) continue;
+        lats.push(y);
+        lngs.push(x);
+      }
+    }
+  }
+  return { lats, lngs };
+}
+
+function airRows(data: unknown, lats: number[], lngs: number[]): Array<{ lat: number; lng: number; current: AirCurrent }> {
+  const list = Array.isArray(data) ? data : data ? [data] : [];
+  return list.map((row, index) => {
+    const item = row as { latitude?: number; longitude?: number; current?: AirCurrent };
+    return {
+      lat: Number.isFinite(item.latitude) ? Number(item.latitude) : lats[index] ?? lats[0]!,
+      lng: Number.isFinite(item.longitude) ? Number(item.longitude) : lngs[index] ?? lngs[0]!,
+      current: item.current ?? {},
+    };
+  });
+}
 
 async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
   const lat = q.lat ?? (q.south != null && q.north != null ? (q.south + q.north) / 2 : null);
@@ -616,7 +696,16 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
   const south = q.south ?? lat - 0.4;
   const east = q.east ?? lng + 0.6;
   const north = q.north ?? lat + 0.4;
-  const [metar, om, elev, aqi] = await Promise.all([
+  const samples = airSamples(west, south, east, north, lat, lng);
+  const watchStations = east > west && east - west < 40 && north - south < 40 && west < -60 && east > -170 && south < 72 && north > 18;
+  const monitorUrl =
+    "https://services.arcgis.com/cJ9YHowT8TU7DUyn/ArcGIS/rest/services/Air%20Now%20Current%20Monitor%20Data%20Public/FeatureServer/0/query" +
+    `?where=Status%3D'Active'` +
+    `&geometry=${west.toFixed(3)}%2C${south.toFixed(3)}%2C${east.toFixed(3)}%2C${north.toFixed(3)}` +
+    "&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects" +
+    "&outFields=SiteName,DataSource,Latitude,Longitude,Status,MonitorType,OZONE,OZONE_AQI,OZONE_Measured,PM25,PM25_AQI,PM25_Measured,PM10,PM10_AQI,PM10_Measured,LocalTimeString" +
+    "&returnGeometry=false&f=json&resultRecordCount=200";
+  const [metar, om, elev, aqi, monitors] = await Promise.all([
     fetchJson(
       `https://aviationweather.gov/api/data/metar?format=json&bbox=${south},${west},${north},${east}`,
       8000,
@@ -632,13 +721,16 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
         )
       : Promise.resolve(null),
     fetchJson(
-      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=us_aqi,pm2_5`,
-      6000,
+      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${samples.lats.map((value) => value.toFixed(3)).join(",")}&longitude=${samples.lngs.map((value) => value.toFixed(3)).join(",")}&current=${AIR_CURRENT}`,
+      8000,
     ),
+    watchStations ? fetchJson(monitorUrl, 8000) : Promise.resolve(null),
   ]);
   const features: Feature[] = [];
-  const rows = Array.isArray(metar) ? (metar as MetarRow[]) : [];
-  for (const row of rows.slice(0, 40)) {
+  const raw = Array.isArray(metar) ? (metar as MetarRow[]) : [];
+  const stride = Math.max(1, Math.ceil(raw.length / 400));
+  const rows = raw.filter((_, index) => index % stride === 0);
+  for (const row of rows) {
     if (row.lat == null || row.lon == null) continue;
     const wx = `${row.wxString ?? ""} ${row.rawOb ?? ""}`;
     const raining = /\b(RA|TS|SHRA|DZ)\b/.test(wx);
@@ -675,9 +767,42 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
     Number.isFinite(omElev) ? omElev : null,
   );
   const elevM = picked?.meters ?? null;
-  const aqiVal = Number((aqi as AqiCurrent | null)?.current?.us_aqi);
-  const pm25 = Number((aqi as AqiCurrent | null)?.current?.pm2_5);
+  const rowsAir = airRows(aqi, samples.lats, samples.lngs);
+  const here = rowsAir[0];
+  const hereFacts = here ? airFacts(here.current) : [];
+  const aqiVal = Number(here?.current.us_aqi);
   const nodePrecip = stationWet ? Math.max(Number(cur.precipitation ?? 0), 0.5) : (cur.precipitation ?? 0);
+  for (const sample of rowsAir.slice(1)) {
+    const facts = airFacts(sample.current);
+    if (!facts.length) continue;
+    features.push(
+      point(sample.lng, sample.lat, {
+        kind: "sensor",
+        reading: "air",
+        title: facts[0]?.value ?? "Air",
+        detail: "CAMS forecast for this cell, not a monitor on the ground. The index is whichever pollutant is worst, not an average.",
+        source: "Open-Meteo Air Quality",
+        aqi: Number.isFinite(Number(sample.current.us_aqi)) ? Math.round(Number(sample.current.us_aqi)) : null,
+        facts: JSON.stringify(facts),
+      }),
+    );
+  }
+  const stationRows = ((monitors as { features?: Array<{ attributes?: Record<string, unknown> }> } | null)?.features ?? [])
+    .map((feature) => (feature.attributes ? monitorSite(feature.attributes) : null))
+    .filter((site): site is NonNullable<typeof site> => Boolean(site));
+  for (const site of stationRows) {
+    features.push(
+      point(site.lng, site.lat, {
+        kind: "sensor",
+        reading: site.aqi != null ? "air" : "device",
+        title: site.name,
+        detail: "AirNow monitoring station. The method line is the usual instrument class. This feed does not name the exact model.",
+        source: "AirNow",
+        aqi: site.aqi,
+        facts: JSON.stringify(site.facts),
+      }),
+    );
+  }
   features.push(
     point(lng, lat, {
       kind: "sensor",
@@ -698,8 +823,7 @@ async function iotFeatures(q: LiveQuery): Promise<FeatureCollection> {
           cur.wind_speed_10m != null ? { label: "Wind km/h", value: String(cur.wind_speed_10m) } : null,
           elevM != null ? { label: "Elev m", value: String(Math.round(elevM)) } : null,
           picked ? { label: "Height src", value: picked.source } : null,
-          Number.isFinite(aqiVal) ? { label: "US AQI", value: String(Math.round(aqiVal)) } : null,
-          Number.isFinite(pm25) ? { label: "PM2.5", value: `${pm25.toFixed(1)} µg/m³` } : null,
+          ...hereFacts,
           { label: "Kind", value: "Climate node" },
         ].filter(Boolean),
       ),
@@ -712,9 +836,16 @@ let healthCache: { at: number; data: FeatureCollection } | null = null;
 
 async function healthFeatures(): Promise<FeatureCollection> {
   if (healthCache && Date.now() - healthCache.at < 5 * 60_000) return healthCache.data;
-  const [snap, hist] = await Promise.all([
+  const fluUrl =
+    "https://xmart-api-public.who.int/FLUMART/VIW_FNT?$format=json&$top=800&$filter=" +
+    encodeURIComponent(fluFilter());
+  const donUrl =
+    "https://www.who.int/api/news/diseaseoutbreaknews?$top=16&$orderby=PublicationDate%20desc&$select=Title,PublicationDate,DonId";
+  const [snap, hist, flu, don] = await Promise.all([
     fetchJson("https://disease.sh/v3/covid-19/countries?allowNull=true", 10000),
     fetchJson("https://disease.sh/v3/covid-19/historical?lastdays=14", 12000),
+    fetchJson(fluUrl, 12000),
+    fetchJson(donUrl, 12000),
   ]);
   const histMap = new Map<string, number[]>();
   const histRows = Array.isArray(hist)
@@ -741,9 +872,11 @@ async function healthFeatures(): Promise<FeatureCollection> {
         casesPerOneMillion?: number;
         deathsPerOneMillion?: number;
         population?: number;
-        countryInfo?: { lat?: number; long?: number; iso3?: string };
+        countryInfo?: { lat?: number; long?: number; iso2?: string; iso3?: string };
       }>)
     : [];
+  const fluByIso = indexFlu(fluRowsFrom(flu));
+  const outbreaks = outbreaksFrom(don);
   const features: Feature[] = [];
   for (const row of rows) {
     const lat = row.countryInfo?.lat;
@@ -756,33 +889,44 @@ async function healthFeatures(): Promise<FeatureCollection> {
     const last = trend?.[trend.length - 1];
     const delta =
       first != null && last != null ? last - first : (row.todayCases ?? 0);
+    const iso = String(row.countryInfo?.iso2 ?? "").toUpperCase();
+    const viruses = virusFacts(iso ? fluByIso.get(iso) : undefined);
+    const circulating = viruses.filter((fact) => fact.label !== "Flu week" && fact.label !== "ILI");
+    const virusCount = circulating.reduce((sum, fact) => sum + Number(fact.value), 0);
+    const outbreak = outbreaks.find((item) => samePlace(item.place, name));
+    const load = sicknessLoad(virusCount, row.casesPerOneMillion ?? 0, Boolean(outbreak));
+    const level = sicknessLabel(load);
+    const detail = [
+      circulating.length ? circulating.map((fact) => `${fact.label} ${fact.value}`).join(", ") : null,
+      outbreak ? `Outbreak: ${outbreak.disease}` : null,
+      `${cases.toLocaleString()} COVID cases on record`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     features.push(
       point(lon, lat, {
         kind: "health",
         title: name,
-        detail: `${cases.toLocaleString()} cumulative cases`,
-        source: "disease.sh · COVID-19 country series",
-        mag: Math.max(3, Math.min(16, Math.log10(Math.max(cases, 1)) * 2.2)),
+        detail,
+        source: "WHO FluNet · WHO Disease Outbreak News · disease.sh COVID-19",
+        mag: Math.max(4, Math.min(18, 6 + load * 14)),
+        load,
+        level,
         trend: trend ? JSON.stringify(trend) : "",
         facts: JSON.stringify([
-          { label: "Cases", value: cases.toLocaleString() },
-          { label: "Today", value: (row.todayCases ?? 0).toLocaleString() },
+          { label: "Level", value: level },
+          ...viruses,
+          outbreak ? { label: "Outbreak", value: `${outbreak.disease} · ${outbreak.when}` } : null,
+          { label: "COVID cases", value: cases.toLocaleString() },
+          { label: "COVID today", value: (row.todayCases ?? 0).toLocaleString() },
           {
-            label: "14-day",
+            label: "COVID 14-day",
             value: `${delta >= 0 ? "+" : ""}${delta.toLocaleString()}`,
           },
           { label: "Active", value: (row.active ?? 0).toLocaleString() },
           { label: "Critical", value: (row.critical ?? 0).toLocaleString() },
           { label: "Deaths", value: (row.deaths ?? 0).toLocaleString() },
-          {
-            label: "Per million",
-            value: Math.round(row.casesPerOneMillion ?? 0).toLocaleString(),
-          },
-          {
-            label: "Population",
-            value: Math.round(row.population ?? 0).toLocaleString(),
-          },
-        ]),
+        ].filter((fact): fact is { label: string; value: string } => Boolean(fact))),
       }),
     );
   }
@@ -895,6 +1039,71 @@ function osmFeatureFromElement(el: OverpassEl): Feature | null {
       : { type: "LineString", coordinates: coords },
     properties: props,
   };
+}
+
+function kilovolts(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const n = Number(raw.split(";")[0]?.trim());
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round((n / 1000) * 10) / 10;
+}
+
+async function powerFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  const zoom = q.zoom ?? 0;
+  if (q.west == null || q.south == null || q.east == null || q.north == null || zoom < 8) {
+    return empty();
+  }
+  const span = Math.abs(q.east - q.west) * Math.abs(q.north - q.south);
+  if (span > 8) return empty();
+  const bbox = `${q.south.toFixed(4)},${q.west.toFixed(4)},${q.north.toFixed(4)},${q.east.toFixed(4)}`;
+  const local = zoom >= 11;
+  const body = `[out:json][timeout:16];(${
+    `way["power"="line"](${bbox});way["power"="substation"](${bbox});way["power"="plant"](${bbox});node["power"="substation"](${bbox});node["power"="plant"](${bbox});`
+  }${local ? `way["power"="minor_line"](${bbox});node["power"="tower"](${bbox});` : ""});out geom 280;`;
+  const elements = await overpassQuery(body);
+  const features: Feature[] = [];
+  for (const el of elements) {
+    const tags = el.tags ?? {};
+    const kv = kilovolts(tags.voltage);
+    const power = tags.power || "line";
+    const title =
+      tags.name ||
+      (kv != null ? `${kv} kV ${power.replace("_", " ")}` : power.replace("_", " "));
+    const facts = [
+      { label: "Kind", value: power.replace("_", " ") },
+      kv != null ? { label: "Voltage", value: `${kv} kV` } : { label: "Voltage", value: "Not tagged" },
+      tags.operator ? { label: "Operator", value: tags.operator } : null,
+      tags.cables ? { label: "Cables", value: tags.cables } : null,
+      tags.frequency ? { label: "Frequency", value: `${tags.frequency} Hz` } : null,
+      tags.circuits ? { label: "Circuits", value: tags.circuits } : null,
+    ].filter((fact): fact is { label: string; value: string } => Boolean(fact));
+    const props = {
+      kind: "power",
+      title,
+      detail: [kv != null ? `${kv} kV` : null, tags.operator, power.replace("_", " ")].filter(Boolean).join(" · "),
+      source: "OpenStreetMap",
+      ...(kv != null ? { kv } : {}),
+      facts: JSON.stringify(facts),
+    };
+    if (el.type === "node" && el.lat != null && el.lon != null) {
+      features.push(point(el.lon, el.lat, props));
+      continue;
+    }
+    const geom = el.geometry;
+    if (!geom || geom.length < 2) continue;
+    const coords = geom.map((pt) => [pt.lon, pt.lat] as [number, number]);
+    const closed =
+      (power === "substation" || power === "plant") &&
+      coords.length >= 4 &&
+      coords[0]![0] === coords[coords.length - 1]![0] &&
+      coords[0]![1] === coords[coords.length - 1]![1];
+    features.push({
+      type: "Feature",
+      geometry: closed ? { type: "Polygon", coordinates: [coords] } : { type: "LineString", coordinates: coords },
+      properties: props,
+    });
+  }
+  return { type: "FeatureCollection", features };
 }
 
 async function overpassFeatures(q: LiveQuery): Promise<Feature[]> {
@@ -1670,6 +1879,74 @@ async function streetFeatures(q: LiveQuery): Promise<FeatureCollection> {
   return empty();
 }
 
+async function nwsBrief(lat: number, lng: number): Promise<WeatherBrief | null> {
+  const point = (await fetchJson(
+    `https://api.weather.gov/points/${lat.toFixed(4)},${lng.toFixed(4)}`,
+    7000,
+  )) as { properties?: { forecast?: string; forecastHourly?: string } } | null;
+  const forecastUrl = point?.properties?.forecast;
+  if (!forecastUrl) return null;
+  const hourlyUrl = point?.properties?.forecastHourly;
+  const [daily, hourly] = await Promise.all([
+    fetchJson(forecastUrl, 7000),
+    hourlyUrl ? fetchJson(hourlyUrl, 7000) : Promise.resolve(null),
+  ]);
+  return parseNws(daily, hourly);
+}
+
+async function metBrief(lat: number, lng: number): Promise<WeatherBrief | null> {
+  const raw = await fetchJson(
+    `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${lat.toFixed(4)}&lon=${lng.toFixed(4)}`,
+    8000,
+  );
+  return parseMetNo(raw);
+}
+
+const weatherCache = new Map<string, { at: number; data: FeatureCollection }>();
+
+async function weatherFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  if (q.lat == null || q.lng == null) return empty();
+  const lat = q.lat;
+  const lng = q.lng;
+  const key = `${(Math.round(lat * 20) / 20).toFixed(2)},${(Math.round(lng * 20) / 20).toFixed(2)}`;
+  const hit = weatherCache.get(key);
+  if (hit && Date.now() - hit.at < 8 * 60_000) return hit.data;
+  const forecast = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,uv_index,is_day,dew_point_2m&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,uv_index_max&timezone=auto&forecast_days=5`;
+  const covered = inUsgsCoverage(lat, lng);
+  const [om, alerts, nws, met] = await Promise.all([
+    fetchJson(forecast, 8000),
+    covered
+      ? fetchJson(`https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lng.toFixed(4)}`, 6000)
+      : Promise.resolve(null),
+    covered ? nwsBrief(lat, lng) : Promise.resolve(null),
+    metBrief(lat, lng),
+  ]);
+  const brief = parseForecast(om) ?? nws ?? met;
+  if (!brief) return empty();
+  const office = parseAlerts(alerts);
+  if (office.length) {
+    brief.alerts = office;
+    if (!brief.source.includes("NWS")) brief.source = `${brief.source} · NWS`;
+  }
+  const data: FeatureCollection = {
+    type: "FeatureCollection",
+    features: [
+      point(lng, lat, {
+        kind: "weather",
+        title: brief.condition,
+        detail: brief.temp == null ? brief.condition : `${brief.temp.toFixed(1)}°C`,
+        source: brief.source,
+        temp: brief.temp,
+        wind: brief.wind,
+        precip: brief.precip,
+        brief: JSON.stringify(brief),
+      }),
+    ],
+  };
+  weatherCache.set(key, { at: Date.now(), data });
+  return data;
+}
+
 export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
   switch (q.kind) {
     case "transit":
@@ -1708,6 +1985,10 @@ export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
       return indoorFeatures(q);
     case "street":
       return streetFeatures(q);
+    case "weather":
+      return weatherFeatures(q);
+    case "power":
+      return powerFeatures(q);
     default:
       return empty();
   }

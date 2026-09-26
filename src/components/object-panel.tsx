@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LAYER_META, OBJECT_META } from "@/lib/layer-meta";
-import { OVERLAYS } from "@/lib/basemaps";
+import { OVERLAYS, QUAKES_URL } from "@/lib/basemaps";
 import type { MapObject } from "@/lib/map-types";
 import { formatDecimal, type PerceptionFrame } from "@/lib/perception";
+import { formatKm, hitsFromCollection, nearbyHits, type NearbyHit } from "@/lib/nearby";
 import { cn } from "@/lib/utils";
 
 type ObjectPanelProps = {
@@ -125,6 +127,116 @@ function RealityFrame({ frame }: { frame: PerceptionFrame }) {
   );
 }
 
+const TILE_LABELS = new Set([
+  "Temp",
+  "Wind",
+  "Humidity",
+  "Echo",
+  "Magnitude",
+  "Elevation",
+  "Precip",
+  "Flu A",
+  "Flu B",
+  "RSV",
+  "Rhino",
+  "Coronavirus",
+  "Parainfluenza",
+  "Adeno",
+  "Metapneumovirus",
+  "Bocavirus",
+]);
+const PLACE_LABELS = new Set([
+  "Imagery",
+  "Place",
+  "Street",
+  "County",
+  "State",
+  "Country",
+  "Postcode",
+  "Site address",
+  "Elevation",
+  "Condition",
+  "Temp",
+  "Feels",
+  "Humidity",
+  "Dew point",
+  "Pressure",
+  "Wind",
+  "Gust",
+  "Precip",
+  "Cloud",
+  "Visibility",
+  "UV",
+  "Forecast",
+  "Alert",
+  "Next hours",
+  "Days",
+  "Look-at",
+]);
+
+const WIND_FROM: Record<string, number> = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
+
+function EchoScale({ band }: { band: string }) {
+  const marks = [
+    { id: "light", label: "Light", color: "#38bdf8" },
+    { id: "moderate", label: "Moderate", color: "#f5d90a" },
+    { id: "heavy", label: "Heavy", color: "#ff4d1a" },
+  ];
+  return (
+    <div className="mt-3">
+      <div className="flex h-2 overflow-hidden rounded-full">
+        {marks.map((mark) => (
+          <div key={mark.id} className="h-full flex-1" style={{ background: mark.color, opacity: band === mark.id || band === "none" ? 1 : 0.35 }} />
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] uppercase tracking-label text-subtle">
+        {marks.map((mark) => (
+          <span key={mark.id} className={band === mark.id ? "text-fg" : ""}>
+            {mark.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WindMark({ text }: { text: string }) {
+  const cardinal = text.split(" ")[0] ?? "";
+  const from = WIND_FROM[cardinal];
+  if (from == null) return null;
+  return (
+    <svg viewBox="0 0 24 24" className="size-4 text-primary" style={{ transform: `rotate(${from + 180}deg)` }} aria-hidden="true">
+      <path d="M12 3 L16 14 H13.2 V21 H10.8 V14 H8 Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[var(--radius-sm)] border border-border bg-bg px-2.5 py-2">
+      <p className="flex items-center gap-1 text-[10px] uppercase tracking-label text-subtle">
+        {label === "Wind" ? <WindMark text={value} /> : null}
+        {label}
+      </p>
+      <p className="mt-0.5 truncate font-display text-lg leading-none text-fg">{value}</p>
+    </div>
+  );
+}
+
+function FactList({ rows }: { rows: Array<{ label: string; value: string }> }) {
+  if (!rows.length) return null;
+  return (
+    <dl className="divide-y divide-border">
+      {rows.map((fact) => (
+        <div key={fact.label} className="flex items-baseline justify-between gap-3 py-1.5">
+          <dt className="text-[10px] uppercase tracking-label text-subtle">{fact.label}</dt>
+          <dd className="max-w-[70%] text-right text-xs font-medium text-fg">{fact.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function ObjectPanel({
   object,
   frame,
@@ -136,6 +248,44 @@ export function ObjectPanel({
 }: ObjectPanelProps) {
   const meta = object ? OBJECT_META[object.kind] : null;
   const Icon = meta?.icon;
+  const [nearby, setNearby] = useState<NearbyHit[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const facts = object?.facts ?? [];
+  const tiles = facts.filter((fact) => TILE_LABELS.has(fact.label) && fact.value.length < 28);
+  const layerRows = facts.filter((fact) => !PLACE_LABELS.has(fact.label) && !TILE_LABELS.has(fact.label));
+  const placeRows = facts.filter((fact) => PLACE_LABELS.has(fact.label) && !TILE_LABELS.has(fact.label) && fact.label !== "Look-at");
+  const band = facts.find((fact) => fact.label === "Band")?.value ?? "";
+
+  useEffect(() => {
+    if (object?.lng == null || object.lat == null) {
+      setNearby([]);
+      return;
+    }
+    const lng = object.lng;
+    const lat = object.lat;
+    const ctrl = new AbortController();
+    const pad = 4;
+    setScanning(true);
+    void (async () => {
+      const box = `west=${lng - pad}&south=${lat - pad}&east=${lng + pad}&north=${lat + pad}&zoom=6`;
+      const [quakes, alerts, events, flights] = await Promise.all([
+        fetch(QUAKES_URL, { signal: ctrl.signal }).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+        fetch(`/api/live?kind=alerts&${box}`, { signal: ctrl.signal }).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+        fetch(`/api/live?kind=events`, { signal: ctrl.signal }).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+        fetch(`/api/live?kind=flights&${box}`, { signal: ctrl.signal }).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+      ]);
+      if (ctrl.signal.aborted) return;
+      const hits = [
+        ...nearbyHits(hitsFromCollection(quakes, "Quake"), lng, lat, 500, 3),
+        ...nearbyHits(hitsFromCollection(alerts, "Alert"), lng, lat, 250, 2),
+        ...nearbyHits(hitsFromCollection(events, "Event"), lng, lat, 800, 2),
+        ...nearbyHits(hitsFromCollection(flights, "Flight"), lng, lat, 120, 2),
+      ].sort((a, b) => a.km - b.km);
+      setNearby(hits.slice(0, 6));
+      setScanning(false);
+    })();
+    return () => ctrl.abort();
+  }, [object?.lat, object?.lng]);
 
   return (
     <aside
@@ -184,24 +334,53 @@ export function ObjectPanel({
             ) : null}
             {object.trend && object.trend.length > 1 ? (
               <div className="mt-3">
-                <p className="text-xs uppercase tracking-label text-subtle">14-day trend</p>
+                <p className="text-[10px] uppercase tracking-label text-subtle">14-day trend</p>
                 <Sparkline values={object.trend} />
               </div>
             ) : null}
-            {object.facts && object.facts.length > 0 ? (
-              <dl className="mt-4 divide-y divide-border border-y border-border">
-                {object.facts.map((fact) => (
-                  <div
-                    key={fact.label}
-                    className="flex items-baseline justify-between gap-3 py-2"
-                  >
-                    <dt className="text-xs uppercase tracking-label text-subtle">
-                      {fact.label}
-                    </dt>
-                    <dd className="text-sm font-medium text-fg">{fact.value}</dd>
-                  </div>
+            {tiles.length ? (
+              <div className="mt-3 grid grid-cols-2 gap-1.5">
+                {tiles.map((fact) => (
+                  <MetricTile key={fact.label} label={fact.label} value={fact.value} />
                 ))}
-              </dl>
+              </div>
+            ) : null}
+            {band ? <EchoScale band={band} /> : null}
+            {layerRows.length ? (
+              <section className="mt-4">
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-label text-subtle">This layer</p>
+                <FactList rows={layerRows} />
+              </section>
+            ) : null}
+            {placeRows.length ? (
+              <section className="mt-4">
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-label text-subtle">Also at this point</p>
+                <FactList rows={placeRows} />
+              </section>
+            ) : null}
+            <section className="mt-4">
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-label text-subtle">Nearby</p>
+              {scanning && !nearby.length ? (
+                <p className="text-xs text-muted">Scanning the other layers…</p>
+              ) : nearby.length ? (
+                <ul className="flex flex-col gap-1.5">
+                  {nearby.map((hit) => (
+                    <li key={`${hit.layer}-${hit.title}-${hit.km.toFixed(1)}`} className="rounded-[var(--radius-sm)] border border-border bg-bg px-2.5 py-2">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[10px] uppercase tracking-label text-subtle">{hit.layer}</span>
+                        <span className="font-mono text-[11px] text-primary">{formatKm(hit.km)}</span>
+                      </div>
+                      <p className="mt-0.5 text-sm font-medium leading-snug text-fg">{hit.title}</p>
+                      {hit.detail ? <p className="truncate text-xs text-muted">{hit.detail}</p> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted">No quake, alert, flight, or open event in range.</p>
+              )}
+            </section>
+            {frame?.overlays.length ? (
+              <p className="mt-3 text-[11px] text-subtle">Layers on: {frame.overlays.join(" · ")}</p>
             ) : null}
             {object.source ? (
               <p className="mt-3 text-xs text-subtle">{object.source}</p>
@@ -225,9 +404,7 @@ export function ObjectPanel({
                 {formatDecimal(object.lng, object.lat)}
               </p>
             ) : null}
-            {meta ? (
-              <p className="mt-4 text-sm leading-relaxed text-muted">{meta.usage}</p>
-            ) : null}
+            {meta ? <p className="mt-3 text-xs leading-relaxed text-subtle">{meta.usage}</p> : null}
             {frame ? <RealityFrame frame={frame} /> : null}
           </div>
         ) : (

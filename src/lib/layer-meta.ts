@@ -23,6 +23,7 @@ import {
   TriangleAlert,
   Type,
   Waypoints,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import type { OverlayId } from "@/lib/basemaps";
@@ -94,11 +95,12 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   health: {
     icon: HeartPulse,
     usage:
-      "Country sickness load and 14-day case trend from public COVID-19 series. Click a pulse for the readout.",
+      "Sickness as a heat field, same idea as wildlife. Brighter means a higher load from this week's flu and other respiratory detections, plus an active WHO outbreak. Click a country for the viruses and the aircraft-style readout of what is circulating.",
   },
   radar: {
     icon: CloudRain,
-    usage: "Near-real-time precipitation radar.",
+    usage:
+      "Weather levels. Radar is only where a dish is online. Precip, clouds, air temperature, sea temperature, and snow are worldwide NASA fields. Turn Weather on, then step the levels.",
   },
   quakes: {
     icon: Activity,
@@ -111,7 +113,8 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   },
   flights: {
     icon: Plane,
-    usage: "Live ADS-B aircraft around major hubs, or around the view when zoomed.",
+    usage:
+      "Live aircraft from ADS-B. The heat under them runs red near the ground to blue at cruise, so it reads on the satellite. The shape is still the airplane or helicopter, colored by wake.",
   },
   alerts: {
     icon: TriangleAlert,
@@ -124,7 +127,12 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   iot: {
     icon: Radio,
     usage:
-      "IoT into the perception layer: METAR, Open-Meteo climate, worldwide height, air quality at the look-at. USGS 3DEP only refines height inside the US.",
+      "Weather stations are temperature. Named dots are AirNow monitors: the agency, what they measure, and the usual instrument class. Colored cells with no name are a forecast, not a device.",
+  },
+  power: {
+    icon: Zap,
+    usage:
+      "OpenStreetMap power lines, substations, and plants, drawn in purple so they read on the satellite. Lighter violet is low voltage, deep magenta is about 230 kV, and the brightest violet is extra-high voltage. Zoom in. The operator and voltage are whatever was tagged.",
   },
 };
 
@@ -163,4 +171,13 @@ export const OBJECT_META: Record<MapObjectKind, LayerMeta> = {
       "An OSM land-use zone. Legal zoning ordinances are municipal; this is the worldwide land-use proxy.",
   },
   sensor: LAYER_META.iot,
+  radar: {
+    icon: CloudRain,
+    usage: "The RainViewer echo under the tap. Blue is light, yellow is moderate, red is heavy.",
+  },
+  power: LAYER_META.power,
+  place: {
+    icon: MapPin,
+    usage: "The named place under the tap. Not a lot line unless the Plots layer is on.",
+  },
 };

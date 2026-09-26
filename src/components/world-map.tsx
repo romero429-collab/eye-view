@@ -31,6 +31,9 @@ import type {
 } from "@/lib/map-types";
 import { HOME_ROTATION } from "@/lib/map-types";
 import { GlobeFallback } from "@/components/globe-fallback";
+import { briefFromProperties, mergeFacts, weatherFacts } from "@/lib/weather";
+import { readRadarPixel, tileOf } from "@/lib/radar";
+import { WEATHER_LEVELS, type WeatherLevelId } from "@/lib/weather-levels";
 import { DOMESTIC_TRAILS, WILD_TRAILS } from "@/lib/animal-trails";
 import {
   COVER_CLASS_FILTER,
@@ -42,10 +45,12 @@ import {
   RAINVIEWER_MAPS,
   TILES,
   TILE_ATTRIBUTION,
+  IMAGERY,
   ZONE_FILL_COLOR,
   ZONE_MEMORY_COLOR,
   ZONE_SWATCHES,
   radarTileUrl,
+  type ImageryId,
   type OverlayState,
   zoneLabel,
 } from "@/lib/basemaps";
@@ -120,6 +125,8 @@ type WorldMapProps = {
   onScene?: (scene: SceneSample | null) => void;
   patches?: ZonePatch[];
   onInteriorMeta?: (meta: { measured: boolean; levels: string[]; note: string }) => void;
+  imagery?: ImageryId;
+  weatherLevel?: WeatherLevelId;
 };
 
 function isCoarsePointer(): boolean {
@@ -163,6 +170,52 @@ function colorFeatures(
   };
 }
 
+function craftSprite(kind: "plane" | "heli", fill: string): ImageData {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const g = canvas.getContext("2d");
+  if (!g) return new ImageData(64, 64);
+  g.clearRect(0, 0, 64, 64);
+  g.translate(32, 32);
+  g.fillStyle = fill;
+  g.strokeStyle = "#0b1220";
+  g.lineWidth = 2;
+  if (kind === "plane") {
+    g.beginPath();
+    g.moveTo(0, -26);
+    g.lineTo(5, -4);
+    g.lineTo(24, 4);
+    g.lineTo(5, 8);
+    g.lineTo(6, 18);
+    g.lineTo(12, 22);
+    g.lineTo(0, 18);
+    g.lineTo(-12, 22);
+    g.lineTo(-6, 18);
+    g.lineTo(-5, 8);
+    g.lineTo(-24, 4);
+    g.lineTo(-5, -4);
+    g.closePath();
+    g.fill();
+    g.stroke();
+  } else {
+    g.beginPath();
+    g.ellipse(0, -4, 26, 7, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.beginPath();
+    g.ellipse(0, 4, 6, 16, 0, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    g.beginPath();
+    g.moveTo(-8, 16);
+    g.lineTo(8, 16);
+    g.lineTo(0, 24);
+    g.closePath();
+    g.fill();
+  }
+  return g.getImageData(0, 0, 64, 64);
+}
+
 function buildStyle(): StyleSpecification {
   return {
     version: 8,
@@ -182,6 +235,34 @@ function buildStyle(): StyleSpecification {
         maxzoom: 19,
         attribution: TILE_ATTRIBUTION,
       },
+      "imagery-viirs": {
+        type: "raster",
+        tiles: [IMAGERY.find((item) => item.id === "viirs")!.tiles],
+        tileSize: 256,
+        maxzoom: 9,
+        attribution: TILE_ATTRIBUTION,
+      },
+      "imagery-modis": {
+        type: "raster",
+        tiles: [IMAGERY.find((item) => item.id === "modis")!.tiles],
+        tileSize: 256,
+        maxzoom: 9,
+        attribution: TILE_ATTRIBUTION,
+      },
+      "imagery-sentinel": {
+        type: "raster",
+        tiles: [IMAGERY.find((item) => item.id === "sentinel")!.tiles],
+        tileSize: 256,
+        maxzoom: 14,
+        attribution: TILE_ATTRIBUTION,
+      },
+      "imagery-usgs": {
+        type: "raster",
+        tiles: [IMAGERY.find((item) => item.id === "usgs")!.tiles],
+        tileSize: 256,
+        maxzoom: 16,
+        attribution: TILE_ATTRIBUTION,
+      },
       streets: {
         type: "raster",
         tiles: [TILES.streets],
@@ -197,6 +278,41 @@ function buildStyle(): StyleSpecification {
         tileSize: 256,
         maxzoom: 12,
         attribution: "RainViewer",
+      },
+      "wx-precip": {
+        type: "raster",
+        tiles: [WEATHER_LEVELS.find((level) => level.id === "precip")!.tiles!],
+        tileSize: 256,
+        maxzoom: 6,
+        attribution: "NASA GIBS IMERG",
+      },
+      "wx-clouds": {
+        type: "raster",
+        tiles: [WEATHER_LEVELS.find((level) => level.id === "clouds")!.tiles!],
+        tileSize: 256,
+        maxzoom: 6,
+        attribution: "NASA GIBS MODIS",
+      },
+      "wx-temp": {
+        type: "raster",
+        tiles: [WEATHER_LEVELS.find((level) => level.id === "temp")!.tiles!],
+        tileSize: 256,
+        maxzoom: 6,
+        attribution: "NASA GIBS AIRS",
+      },
+      "wx-sea": {
+        type: "raster",
+        tiles: [WEATHER_LEVELS.find((level) => level.id === "sea")!.tiles!],
+        tileSize: 256,
+        maxzoom: 7,
+        attribution: "NASA GIBS GHRSST",
+      },
+      "wx-snow": {
+        type: "raster",
+        tiles: [WEATHER_LEVELS.find((level) => level.id === "snow")!.tiles!],
+        tileSize: 256,
+        maxzoom: 8,
+        attribution: "NASA GIBS MODIS",
       },
       reference: {
         type: "raster",
@@ -313,6 +429,10 @@ function buildStyle(): StyleSpecification {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
+      power: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
       plots: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -391,6 +511,30 @@ function buildStyle(): StyleSpecification {
         layout: { visibility: "visible" },
       },
       {
+        id: "imagery-viirs",
+        type: "raster",
+        source: "imagery-viirs",
+        layout: { visibility: "none" },
+      },
+      {
+        id: "imagery-modis",
+        type: "raster",
+        source: "imagery-modis",
+        layout: { visibility: "none" },
+      },
+      {
+        id: "imagery-sentinel",
+        type: "raster",
+        source: "imagery-sentinel",
+        layout: { visibility: "none" },
+      },
+      {
+        id: "imagery-usgs",
+        type: "raster",
+        source: "imagery-usgs",
+        layout: { visibility: "none" },
+      },
+      {
         id: "streets",
         type: "raster",
         source: "streets",
@@ -403,6 +547,41 @@ function buildStyle(): StyleSpecification {
         source: "radar",
         layout: { visibility: "none" },
         paint: { "raster-opacity": 0.72 },
+      },
+      {
+        id: "wx-precip",
+        type: "raster",
+        source: "wx-precip",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.85 },
+      },
+      {
+        id: "wx-clouds",
+        type: "raster",
+        source: "wx-clouds",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.8 },
+      },
+      {
+        id: "wx-temp",
+        type: "raster",
+        source: "wx-temp",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.72 },
+      },
+      {
+        id: "wx-sea",
+        type: "raster",
+        source: "wx-sea",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.75 },
+      },
+      {
+        id: "wx-snow",
+        type: "raster",
+        source: "wx-snow",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.8 },
       },
       {
         id: "choropleth",
@@ -1119,6 +1298,67 @@ function buildStyle(): StyleSpecification {
         },
       },
       {
+        id: "power-line",
+        type: "line",
+        source: "power",
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { visibility: "none" },
+        paint: {
+          "line-color": [
+            "interpolate",
+            ["linear"],
+            ["coalesce", ["to-number", ["get", "kv"]], 69],
+            1,
+            "#e9d5ff",
+            69,
+            "#d946ef",
+            230,
+            "#a21caf",
+            500,
+            "#f0abfc",
+          ],
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["coalesce", ["to-number", ["get", "kv"]], 69],
+            1,
+            1.1,
+            69,
+            1.8,
+            230,
+            2.6,
+            500,
+            3.4,
+          ],
+          "line-opacity": 0.9,
+        },
+      },
+      {
+        id: "power-fill",
+        type: "fill",
+        source: "power",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        layout: { visibility: "none" },
+        paint: {
+          "fill-color": "#d946ef",
+          "fill-opacity": 0.4,
+        },
+      },
+      {
+        id: "power-site",
+        type: "circle",
+        source: "power",
+        filter: ["==", ["geometry-type"], "Point"],
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#d946ef",
+          "circle-opacity": 0.95,
+          "circle-stroke-color": "#0b1220",
+          "circle-stroke-width": 1,
+        },
+      },
+      {
         id: "osm-fill",
         type: "fill",
         source: "osm",
@@ -1172,16 +1412,59 @@ function buildStyle(): StyleSpecification {
         },
       },
       {
+        id: "health-heat",
+        type: "heatmap",
+        source: "health",
+        layout: { visibility: "none" },
+        paint: {
+          "heatmap-weight": [
+            "interpolate",
+            ["linear"],
+            ["coalesce", ["to-number", ["get", "load"]], 0.2],
+            0,
+            0.15,
+            1,
+            1,
+          ],
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.7, 4, 1.2],
+          "heatmap-color": heatmapColorExpr("health"),
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 22, 3, 40, 6, 26],
+          "heatmap-opacity": 0.78,
+        },
+      },
+      {
         id: "health",
         type: "circle",
         source: "health",
         layout: { visibility: "none" },
         paint: {
-          "circle-radius": ["coalesce", ["get", "mag"], 6],
-          "circle-color": "#7ecad4",
-          "circle-opacity": 0.45,
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["coalesce", ["to-number", ["get", "load"]], 0.2],
+            0,
+            6,
+            1,
+            14,
+          ],
+          "circle-color": [
+            "interpolate",
+            ["linear"],
+            ["coalesce", ["to-number", ["get", "load"]], 0.2],
+            0.16,
+            "#fde047",
+            0.38,
+            "#f59e0b",
+            0.58,
+            "#ea580c",
+            0.78,
+            "#dc2626",
+            1,
+            "#7f1d1d",
+          ],
+          "circle-opacity": 0.9,
           "circle-stroke-color": "#e7eaed",
-          "circle-stroke-width": 0.8,
+          "circle-stroke-width": 1,
         },
       },
       {
@@ -1260,16 +1543,50 @@ function buildStyle(): StyleSpecification {
         },
       },
       {
-        id: "flights",
-        type: "circle",
+        id: "flights-heat",
+        type: "heatmap",
         source: "flights",
         layout: { visibility: "none" },
         paint: {
-          "circle-radius": 3.4,
-          "circle-color": "#e7eaed",
-          "circle-opacity": 0.85,
-          "circle-stroke-width": 0,
+          "heatmap-weight": [
+            "interpolate",
+            ["linear"],
+            ["coalesce", ["to-number", ["get", "altitude"]], 0],
+            0,
+            0.08,
+            2500,
+            0.22,
+            10000,
+            0.45,
+            25000,
+            0.75,
+            40000,
+            1,
+          ],
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 2, 0.7, 8, 1.25],
+          "heatmap-color": heatmapColorExpr("flights"),
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 2, 10, 6, 20, 11, 32],
+          "heatmap-opacity": 0.9,
         },
+      },
+      {
+        id: "flights",
+        type: "symbol",
+        source: "flights",
+        layout: {
+          visibility: "none",
+          "icon-image": [
+            "concat",
+            ["match", ["get", "craft"], "heli", "craft-heli-", "craft-plane-"],
+            ["match", ["get", "wtc"], "L", "L", "H", "H", "J", "J", "M"],
+          ],
+          "icon-rotate": ["coalesce", ["to-number", ["get", "track"]], 0],
+          "icon-rotation-alignment": "map",
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.5, 6, 0.75, 12, 1.05],
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+        paint: { "icon-opacity": 0.95 },
       },
       {
         id: "transit",
@@ -1311,16 +1628,48 @@ function buildStyle(): StyleSpecification {
         source: "iot",
         layout: { visibility: "none" },
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 4, 12, 7],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 6, 6, 8, 11, 12],
           "circle-color": [
             "case",
-            [">=", ["coalesce", ["to-number", ["get", "precip"]], 0], 0.2],
-            "#c45c2a",
-            "#6fbfa8",
+            ["==", ["get", "reading"], "air"],
+            [
+              "interpolate",
+              ["linear"],
+              ["coalesce", ["to-number", ["get", "aqi"]], 0],
+              0,
+              "#00e400",
+              50,
+              "#ffff00",
+              100,
+              "#ff7e00",
+              150,
+              "#ff0000",
+              200,
+              "#8f3f97",
+              300,
+              "#7e0023",
+            ],
+            ["==", ["get", "reading"], "device"],
+            "#f4f7f8",
+            [
+              "interpolate",
+              ["linear"],
+              ["coalesce", ["to-number", ["get", "temp"]], 15],
+              -15,
+              "#2166ac",
+              0,
+              "#67a9cf",
+              12,
+              "#f7f7f7",
+              24,
+              "#ef8a62",
+              38,
+              "#b2182b",
+            ],
           ],
-          "circle-opacity": 0.9,
-          "circle-stroke-color": "#e7eaed",
-          "circle-stroke-width": 0.7,
+          "circle-opacity": 0.92,
+          "circle-stroke-color": "#0b1220",
+          "circle-stroke-width": 1.1,
         },
       },
     ],
@@ -1368,14 +1717,15 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
     "memory-queue",
   ],
   bugs: ["gbifBugs", "bugs-heat", "bugsLive"],
-  health: ["health"],
+  health: ["health-heat", "health"],
   radar: ["radar"],
   quakes: ["quakes-heat", "quakes"],
   transit: ["transit", "transit-detour"],
-  flights: ["flights"],
+  flights: ["flights-heat", "flights"],
   alerts: ["alerts"],
   events: ["events"],
   iot: ["iot"],
+  power: ["power-line", "power-fill", "power-site"],
 };
 
 const POINT_HIT_LAYERS = [
@@ -1471,6 +1821,28 @@ function closestFeature(
   return best;
 }
 
+function sampleRadarTile(url: string, px: number, py: number) {
+  return new Promise<ReturnType<typeof readRadarPixel>>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || 256;
+      canvas.height = img.naturalHeight || 256;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("canvas"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      const pixel = ctx.getImageData(px, py, 1, 1).data;
+      resolve(readRadarPixel(pixel[0] ?? 0, pixel[1] ?? 0, pixel[2] ?? 0, pixel[3] ?? 0));
+    };
+    img.onerror = () => reject(new Error("tile"));
+    img.src = url;
+  });
+}
+
 function layerName(layerId: string, kind: MapObjectKind): string {
   if (layerId.startsWith("interior")) return "Inside";
   if (layerId.includes("plants") || kind === "plant" || layerId === "otm-water" || layerId === "ndvi" || layerId === "trees3d" || layerId === "otm-canopy-3d") return "Plants";
@@ -1488,6 +1860,7 @@ function layerName(layerId: string, kind: MapObjectKind): string {
   if (kind === "flight") return "Flights";
   if (kind === "rail") return "Rail";
   if (kind === "health") return "Health";
+  if (kind === "power" || layerId.startsWith("power")) return "Power";
   if (kind === "alert") return "Alerts";
   if (kind === "event") return "Events";
   if (kind === "country") return "Metric";
@@ -1501,6 +1874,37 @@ function withGround(object: MapObject, ground?: string | null): MapObject {
     facts.unshift({ label: "Ground", value: ground });
   }
   return { ...object, ground, facts };
+}
+
+function pushProps(
+  props: Record<string, unknown>,
+  facts: Array<{ label: string; value: string }>,
+) {
+  const skip = new Set([
+    "facts",
+    "trend",
+    "kind",
+    "title",
+    "detail",
+    "source",
+    "photo",
+    "brief",
+    "name",
+    "class",
+    "subclass",
+    "housenumber",
+    "render_height",
+    "mag",
+    "place",
+    "time",
+  ]);
+  for (const [key, value] of Object.entries(props)) {
+    if (skip.has(key) || value == null || value === "") continue;
+    if (typeof value === "object") continue;
+    const text = String(value).slice(0, 180);
+    if (!text || facts.some((fact) => fact.label === key)) continue;
+    facts.push({ label: key, value: text });
+  }
 }
 
 function featureToObject(
@@ -1585,17 +1989,31 @@ function featureToObject(
   if (layerId === "quakes") {
     const mag = Number(props.mag ?? 0);
     const place = String(props.place ?? "Earthquake");
+    const depth =
+      feat.geometry?.type === "Point" && feat.geometry.coordinates.length > 2
+        ? Number(feat.geometry.coordinates[2])
+        : null;
+    const when = Number(props.time);
+    const facts: Array<{ label: string; value: string }> = [
+      { label: "Layer", value: "Quakes" },
+      { label: "Magnitude", value: mag.toFixed(1) },
+      props.magType ? { label: "Mag type", value: String(props.magType) } : null,
+      { label: "Place", value: place },
+      Number.isFinite(depth) ? { label: "Depth", value: `${depth!.toFixed(1)} km` } : null,
+      Number.isFinite(when) ? { label: "When", value: new Date(when).toISOString().slice(0, 16).replace("T", " ") + " UTC" } : null,
+      props.felt != null ? { label: "Felt reports", value: String(props.felt) } : null,
+      props.tsunami != null ? { label: "Tsunami", value: Number(props.tsunami) ? "Yes" : "No" } : null,
+      props.alert ? { label: "Alert", value: String(props.alert) } : null,
+      props.status ? { label: "Status", value: String(props.status) } : null,
+    ].filter((row): row is { label: string; value: string } => Boolean(row));
+    pushProps(props, facts);
     return {
       kind: "quake",
       title: `M ${mag.toFixed(1)}`,
       detail: place,
       source: "USGS",
       layer: "Quakes",
-      facts: [
-        { label: "Layer", value: "Quakes" },
-        { label: "Magnitude", value: mag.toFixed(1) },
-        { label: "Place", value: place },
-      ],
+      facts,
       lng: lngLat?.lng,
       lat: lngLat?.lat,
     };
@@ -1631,6 +2049,15 @@ function featureToObject(
                 ? zoneLabel(klass || (layerId === "otm-park" ? "park" : klass))
                 : "Railway");
     const layer = layerName(layerId, kind);
+    const facts: Array<{ label: string; value: string }> = [
+      { label: "Layer", value: layer },
+      house ? { label: "House no.", value: house } : null,
+      height ? { label: "Height m", value: height } : null,
+      klass ? { label: "class", value: klass } : null,
+      sub ? { label: "subclass", value: sub } : null,
+      name ? { label: "name", value: name } : null,
+    ].filter((row): row is { label: string; value: string } => Boolean(row));
+    pushProps(props, facts);
     return {
       kind,
       title,
@@ -1641,14 +2068,7 @@ function featureToObject(
           : [klass, sub, house && `#${house}`].filter(Boolean).join(" · ") || "OpenStreetMap",
       source: "OpenStreetMap via OpenFreeMap",
       layer,
-      facts: [
-        { label: "Layer", value: layer },
-        house ? { label: "House no.", value: house } : null,
-        height ? { label: "Height m", value: height } : null,
-        klass ? { label: "class", value: klass } : null,
-        sub ? { label: "subclass", value: sub } : null,
-        name ? { label: "name", value: name } : null,
-      ].filter((row): row is { label: string; value: string } => Boolean(row)),
+      facts,
       lng: lngLat?.lng,
       lat: lngLat?.lat,
     };
@@ -1660,6 +2080,7 @@ function featureToObject(
   }
   if (props.mood) facts.push({ label: "Movement", value: String(props.mood) });
   if (props.sense) facts.push({ label: "Through", value: String(props.sense) });
+  pushProps(props, facts);
   return {
     kind,
     title: String(props.title ?? props.name ?? layerId),
@@ -1704,12 +2125,18 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     onScene,
     patches = [],
     onInteriorMeta,
+    imagery = "esri",
+    weatherLevel = "radar",
   },
   ref,
 ) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const imageryRef = useRef(imagery);
+  imageryRef.current = imagery;
+  const weatherLevelRef = useRef(weatherLevel);
+  weatherLevelRef.current = weatherLevel;
   const rawRef = useRef<FeatureCollection | null>(null);
   const selectedRef = useRef<string | null>(null);
   const hoverRef = useRef<string | null>(null);
@@ -1873,7 +2300,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       const show = (fc: GeoJSON.FeatureCollection, center: [number, number]) => {
         (map.getSource("interior") as GeoJSONSource | undefined)?.setData(fc);
         const zoom = map.getZoom();
-        void paintSatelliteColors(fc, zoom).then((painted) => {
+        void paintSatelliteColors(fc, zoom, IMAGERY.find((item) => item.id === imageryRef.current)?.tiles).then((painted) => {
           if (!indoorsRef.current) return;
           (map.getSource("interior") as GeoJSONSource | undefined)?.setData(painted);
         });
@@ -2088,6 +2515,20 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       map.on("load", () => {
         if (!map) return;
         try {
+          const tones: Array<[string, string]> = [
+            ["L", "#c4b89a"],
+            ["M", "#f4f7f8"],
+            ["H", "#d4a054"],
+            ["J", "#c45c2a"],
+          ];
+          for (const [code, fill] of tones) {
+            map.addImage(`craft-plane-${code}`, craftSprite("plane", fill), { pixelRatio: 2 });
+            map.addImage(`craft-heli-${code}`, craftSprite("heli", fill), { pixelRatio: 2 });
+          }
+        } catch {
+          /* icons already registered */
+        }
+        try {
           map.setProjection({ type: "globe" });
         } catch {
           /* globe is optional */
@@ -2147,7 +2588,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
             const p0 = ring?.[0];
             if (!p0) continue;
             const id = feat.id;
-            void satelliteColor(p0[0], p0[1], map.getZoom()).then((color) => {
+            void satelliteColor(
+              p0[0],
+              p0[1],
+              map.getZoom(),
+              IMAGERY.find((item) => item.id === imageryRef.current)?.tiles,
+            ).then((color) => {
               if (!color || !map) return;
               map.setFeatureState(
                 { source: "openmaptiles", sourceLayer: "building", id },
@@ -2232,7 +2678,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         };
 
         if (pointHit) {
-          pickObject(featureToObject(pointHit, pointHit.layer.id, event.lngLat));
+          deepen(featureToObject(pointHit, pointHit.layer.id, event.lngLat));
           return;
         }
 
@@ -2266,6 +2712,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
                 ];
               }
               pickObject(looked);
+              void loadSiteFacts().then((extra) => pickObject({ ...looked, facts: mergeFacts(looked.facts, extra) }));
             } catch {
               /* keep extra */
             }
@@ -2274,7 +2721,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         }
 
         if (areaHit) {
-          pickObject(featureToObject(areaHit, areaHit.layer.id, event.lngLat));
+          deepen(featureToObject(areaHit, areaHit.layer.id, event.lngLat));
           return;
         }
 
@@ -2290,7 +2737,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               ? "quakes"
               : null;
         if (densityKind) {
-          pickObject(densityObject(densityKind, lng, lat));
+          deepen(densityObject(densityKind, lng, lat));
           if (densityKind === "quakes") return;
           const pad = Math.max(0.06, 0.45 / Math.pow(2, Math.max(0, zoom - 5)));
           const bbox = `west=${lng - pad}&south=${lat - pad}&east=${lng + pad}&north=${lat + pad}&zoom=12`;
@@ -2302,9 +2749,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               const data = (await res.json()) as GeoJSON.FeatureCollection;
               const nearest = closestFeature(data.features ?? [], lng, lat);
               if (nearest) {
-                pickObject(
-                  featureToObject(nearest, `${densityKind}Live`, event.lngLat),
-                );
+                deepen(featureToObject(nearest, `${densityKind}Live`, event.lngLat));
               }
             } catch {
               /* keep density cell */
@@ -2314,7 +2759,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         }
 
         if (ov.ground) {
-          pickObject({
+          const groundSeed: MapObject = {
             kind: "rock",
             title: GEDI_EXPLAIN.title,
             detail: GEDI_EXPLAIN.detail,
@@ -2327,7 +2772,8 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
             ],
             lng,
             lat,
-          });
+          };
+          deepen(groundSeed);
           const pad = Math.max(0.04, 0.35 / Math.pow(2, Math.max(0, zoom - 5)));
           void (async () => {
             try {
@@ -2337,7 +2783,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               if (!res.ok) return;
               const data = (await res.json()) as GeoJSON.FeatureCollection;
               const nearest = closestFeature(data.features ?? [], lng, lat);
-              if (nearest) pickObject(featureToObject(nearest, "geology", event.lngLat));
+              if (nearest) deepen(featureToObject(nearest, "geology", event.lngLat));
             } catch {
               /* keep GEDI cell */
             }
@@ -2345,12 +2791,17 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           return;
         }
 
-        if (ov.zoning && zoom >= 6) {
-          pickObject({
+        if (ov.radar) {
+          inspectRadar();
+          return;
+        }
+
+        if (ov.zoning && zoom >= 6 && !areaHit) {
+          inspectPoint({
             kind: "zone",
             title: "No tagged zone",
             detail:
-              "OpenStreetMap has no land-use or landcover polygon under this tap. Satellite still shows the ground.",
+              "OpenStreetMap has no land-use polygon under this tap. The rest of the card is the ground itself.",
             layer: "Zoning",
             source: "OpenStreetMap via OpenFreeMap",
             facts: [{ label: "Layer", value: "Zoning" }],
@@ -2360,13 +2811,207 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           return;
         }
 
-        if (ground && zoom < 5 && ov.metric) {
+        if (ground && zoom < 5 && ov.metric && !ov.radar) {
           inspectCountryHere();
           return;
         }
 
-        onSelect(null);
-        pickRef.current?.(null);
+        inspectPoint({
+          kind: "place",
+          title: "This point",
+          detail: "Reading the ground under the tap.",
+          layer: "Place",
+          source: "Map tap",
+          facts: [{ label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` }],
+          lng,
+          lat,
+        });
+
+        function inspectRadar() {
+          const seed: MapObject = {
+            kind: "radar",
+            title: "Reading radar",
+            detail: "Sampling the echo under the tap.",
+            layer: "Radar",
+            source: "RainViewer",
+            facts: [{ label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` }],
+            lng,
+            lat,
+          };
+          pickObject(seed);
+          void (async () => {
+            const level = WEATHER_LEVELS.find((item) => item.id === weatherLevelRef.current) ?? WEATHER_LEVELS[0]!;
+            if (level.id !== "radar") {
+              const site = await loadSiteFacts();
+              pickObject({
+                ...seed,
+                title: level.label,
+                detail: level.detail,
+                source: "NASA GIBS",
+                facts: mergeFacts(
+                  [
+                    { label: "Level", value: level.label },
+                    { label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` },
+                  ],
+                  site,
+                ),
+              });
+              return;
+            }
+            let frame = "";
+            let template = "";
+            try {
+              const res = await fetch(RAINVIEWER_MAPS);
+              if (res.ok) {
+                const data = (await res.json()) as Parameters<typeof radarTileUrl>[0] & {
+                  radar?: { past?: Array<{ time?: number; path?: string }> };
+                };
+                const last = data.radar?.past?.[data.radar.past.length - 1];
+                if (last?.time) {
+                  frame = new Date(last.time * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+                }
+                template = radarTileUrl(data) ?? "";
+              }
+            } catch {
+              const src = activeMap.getSource("radar") as { tiles?: string[] } | undefined;
+              template = src?.tiles?.[0] ?? "";
+            }
+            let read = readRadarPixel(0, 0, 0, 0);
+            try {
+              if (!template || template.includes("/radar/0/")) throw new Error("no radar tile");
+              const tile = tileOf(lng, lat, Math.min(zoom, 7));
+              const url = template
+                .replace("{z}", String(tile.z))
+                .replace("{x}", String(tile.x))
+                .replace("{y}", String(tile.y));
+              read = await sampleRadarTile(url, tile.px, tile.py);
+            } catch {
+              read = {
+                title: "Radar",
+                detail: "The radar frame did not load for this tap.",
+                band: "none",
+              };
+            }
+            const site = await loadSiteFacts();
+            pickObject({
+              ...seed,
+              title: read.title,
+              detail: read.detail,
+              facts: mergeFacts(
+                [
+                  { label: "Echo", value: read.title },
+                  { label: "Band", value: read.band },
+                  frame ? { label: "Frame", value: frame } : { label: "Frame", value: "" },
+                  { label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` },
+                ].filter((fact) => fact.value),
+                site,
+              ),
+            });
+          })();
+        }
+
+        async function loadSiteFacts(): Promise<Array<{ label: string; value: string }>> {
+          const facts: Array<{ label: string; value: string }> = [];
+          const shot = IMAGERY.find((item) => item.id === imageryRef.current);
+          if (shot) facts.push({ label: "Imagery", value: `${shot.label}. ${shot.detail}` });
+          try {
+            const elev = activeMap.queryTerrainElevation?.({ lng, lat });
+            if (typeof elev === "number" && Number.isFinite(elev)) {
+              facts.push({ label: "Elevation", value: `${Math.round(elev * 3.28084)} ft` });
+            }
+          } catch {
+            /* terrain not ready */
+          }
+          try {
+            const [placeRes, weatherRes] = await Promise.all([
+              fetch(`/api/live?kind=lookup&lng=${lng}&lat=${lat}`),
+              fetch(`/api/live?kind=weather&lat=${lat.toFixed(3)}&lng=${lng.toFixed(3)}`),
+            ]);
+            if (placeRes.ok) {
+              const data = (await placeRes.json()) as GeoJSON.FeatureCollection;
+              const feat = data.features?.[0];
+              if (feat) {
+                const looked = featureToObject(feat, "plots-point", event.lngLat);
+                if (looked.title) facts.push({ label: "Place", value: looked.title });
+                for (const fact of looked.facts ?? []) {
+                  if (["Street", "County", "State", "Country", "Postcode", "Site address"].includes(fact.label)) {
+                    facts.push(fact);
+                  }
+                }
+              }
+            }
+            if (weatherRes.ok) {
+              const data = (await weatherRes.json()) as GeoJSON.FeatureCollection;
+              const brief = briefFromProperties(
+                (data.features?.[0]?.properties ?? null) as Record<string, unknown> | null,
+              );
+              if (brief) facts.push(...weatherFacts(brief));
+            }
+          } catch {
+            /* partial card is still useful */
+          }
+          return facts;
+        }
+
+        function deepen(object: MapObject) {
+          pickObject(object);
+          void loadSiteFacts().then((extra) => {
+            pickObject({ ...object, facts: mergeFacts(object.facts, extra) });
+          });
+        }
+
+        function inspectPoint(seed: MapObject) {
+          pickObject(seed);
+          liveNoteRef.current?.("Reading this point…");
+          void (async () => {
+            const facts = [...(seed.facts ?? [])];
+            if (!facts.some((fact) => fact.label === "Look-at")) {
+              facts.unshift({ label: "Look-at", value: `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` });
+            }
+            try {
+              const elev = activeMap.queryTerrainElevation?.({ lng, lat });
+              if (typeof elev === "number" && Number.isFinite(elev)) {
+                facts.push({ label: "Elevation", value: `${Math.round(elev * 3.28084)} ft` });
+              }
+            } catch {
+              /* terrain not ready */
+            }
+            let next: MapObject = { ...seed, facts };
+            pickObject(next);
+            try {
+              const [placeRes, weatherRes] = await Promise.all([
+                fetch(`/api/live?kind=lookup&lng=${lng}&lat=${lat}`),
+                fetch(`/api/live?kind=weather&lat=${lat.toFixed(3)}&lng=${lng.toFixed(3)}`),
+              ]);
+              if (placeRes.ok) {
+                const data = (await placeRes.json()) as GeoJSON.FeatureCollection;
+                const feat = data.features?.[0];
+                if (feat) {
+                  const looked = featureToObject(feat, "plots-point", event.lngLat);
+                  const seen = new Set((looked.facts ?? []).map((fact) => fact.label));
+                  looked.facts = [...(looked.facts ?? []), ...facts.filter((fact) => !seen.has(fact.label))];
+                  next =
+                    seed.kind === "zone"
+                      ? { ...seed, detail: looked.detail || seed.detail, facts: looked.facts, ground: looked.ground }
+                      : ov.plots
+                        ? looked
+                        : { ...looked, kind: "place", layer: "Place" };
+                }
+              }
+              if (weatherRes.ok) {
+                const data = (await weatherRes.json()) as GeoJSON.FeatureCollection;
+                const brief = briefFromProperties(
+                  (data.features?.[0]?.properties ?? null) as Record<string, unknown> | null,
+                );
+                if (brief) next = { ...next, facts: mergeFacts(next.facts, weatherFacts(brief)) };
+              }
+              pickObject(next);
+              liveNoteRef.current?.("");
+            } catch {
+              pickObject(next);
+            }
+          })();
+        }
       });
 
       map.on("mousemove", "choropleth", (event: MapLayerMouseEvent) => {
@@ -2502,6 +3147,9 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       bindLiveLayer("alerts", "alert");
       bindLiveLayer("events", "event");
       bindLiveLayer("iot", "sensor");
+      bindLiveLayer("power-line", "power");
+      bindLiveLayer("power-fill", "power");
+      bindLiveLayer("power-site", "power");
       bindLiveLayer("wildlife", "trail");
       bindLiveLayer("livestock", "trail");
       bindLiveLayer("wildlifeLive", "sighting");
@@ -2689,7 +3337,10 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     const map = mapRef.current;
     if (!map || !ready) return;
     map.setLayoutProperty("marble", "visibility", "visible");
-    map.setLayoutProperty("imagery", "visibility", "visible");
+    for (const item of IMAGERY) {
+      if (!map.getLayer(item.layerId)) continue;
+      map.setLayoutProperty(item.layerId, "visibility", item.id === imagery ? "visible" : "none");
+    }
     (Object.keys(OVERLAY_LAYERS) as Array<keyof OverlayState>).forEach((id) => {
       const show = overlays[id];
       for (const layer of OVERLAY_LAYERS[id]) {
@@ -2761,7 +3412,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       map.setPaintProperty("transit", "circle-opacity", 0.92 * dim);
     }
     if (map.getLayer("flights")) {
-      map.setPaintProperty("flights", "circle-opacity", 0.85 * dim);
+      map.setPaintProperty("flights", "icon-opacity", 0.95 * dim);
     }
     if (map.getLayer("wildlifeLive")) {
       map.setPaintProperty("wildlifeLive", "circle-opacity", 0.85 * dim);
@@ -2821,7 +3472,19 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
             ],
       );
     }
-  }, [overlays, ready, globe, walking, zoneFilter]);
+  }, [overlays, ready, globe, walking, zoneFilter, imagery]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const on = overlays.radar;
+    for (const level of WEATHER_LEVELS) {
+      if (!map.getLayer(level.layerId)) continue;
+      const show = on && level.id === weatherLevel;
+      map.setLayoutProperty(level.layerId, "visibility", show ? "visible" : "none");
+      if (show) map.setPaintProperty(level.layerId, "raster-opacity", level.opacity);
+    }
+  }, [overlays.radar, weatherLevel, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -2889,6 +3552,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       "plants",
       "health",
       "iot",
+      "power",
       "ground",
       "bugs",
     ] as const;
@@ -2917,6 +3581,14 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       await Promise.all(
         active.map(async (kind) => {
           try {
+            if (kind === "power" && zoom < 8) {
+              (map.getSource("power") as GeoJSONSource | undefined)?.setData({
+                type: "FeatureCollection",
+                features: [],
+              });
+              notes.push("Zoom in for power lines");
+              return;
+            }
             const res = await fetch(`/api/live?kind=${kind}&${bbox}`);
             if (!res.ok) return;
             const data = (await res.json()) as GeoJSON.FeatureCollection & {
@@ -2945,7 +3617,11 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               const stems = stemsFromPlants(data);
               (map.getSource("trees3d") as GeoJSONSource | undefined)?.setData(stems);
               const zoom = map.getZoom();
-              void paintSatelliteColors(stems, zoom).then((painted) => {
+              void paintSatelliteColors(
+                stems,
+                zoom,
+                IMAGERY.find((item) => item.id === imageryRef.current)?.tiles,
+              ).then((painted) => {
                 (map.getSource("trees3d") as GeoJSONSource | undefined)?.setData(painted);
               });
               notes.push(`${data.count ?? data.features.length} plants`);
@@ -2965,10 +3641,18 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               const rocks = assetsFromGround({ type: "FeatureCollection", features: rockFeats });
               (map.getSource("rocks3d") as GeoJSONSource | undefined)?.setData(rocks);
               const zoom = map.getZoom();
-              void paintSatelliteColors(rocks, zoom).then((painted) => {
+              void paintSatelliteColors(
+                rocks,
+                zoom,
+                IMAGERY.find((item) => item.id === imageryRef.current)?.tiles,
+              ).then((painted) => {
                 (map.getSource("rocks3d") as GeoJSONSource | undefined)?.setData(painted);
               });
               notes.push(`${data.features.length} ground`);
+              return;
+            }
+            if (kind === "flights" && !(data.features?.length)) {
+              notes.push("flights holding");
               return;
             }
             (map.getSource(sourceFor(kind)) as GeoJSONSource | undefined)?.setData(
@@ -3067,6 +3751,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     overlays.plants,
     overlays.health,
     overlays.iot,
+    overlays.power,
     overlays.ground,
     overlays.bugs,
     overlays.rail,
