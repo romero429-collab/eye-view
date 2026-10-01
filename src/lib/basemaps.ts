@@ -244,7 +244,7 @@ export const TILES = {
     "https://tiles.arcgis.com/tiles/KzeiCaQsMoeCfoCq/arcgis/rest/services/Regrid_Nationwide_Parcel_Boundaries_v1/MapServer/tile/{z}/{y}/{x}",
 } as const;
 
-export type ImageryId = "esri" | "viirs" | "modis" | "sentinel" | "usgs";
+export type ImageryId = "esri" | "viirs" | "modis" | "sentinel" | "usgs" | "depth";
 
 /** Pictures of the ground, not overlays. One is visible at a time. */
 export const IMAGERY: Array<{
@@ -295,10 +295,18 @@ export const IMAGERY: Array<{
     maxzoom: 16,
     layerId: "imagery-usgs",
   },
+  {
+    id: "depth",
+    label: "Depth",
+    detail: "Seafloor depth from the Esri ocean basemap. A colored depth picture, not a swim through the water. It stays coarse past zoom 13.",
+    tiles: "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
+    maxzoom: 13,
+    layerId: "imagery-depth",
+  },
 ];
 
 export const TILE_ATTRIBUTION =
-  "NASA GIBS Blue Marble, VIIRS, MODIS, Sentinel-2 cloudless (EOX), USGS Imagery, Mapzen/USGS elevation, Esri, Maxar, OpenStreetMap, OpenFreeMap, Regrid, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Macrostrat, SoilGrids, Waymarked Trails, Open-Meteo, MET Norway, disease.sh";
+  "NASA GIBS Blue Marble, VIIRS, MODIS, Sentinel-2 cloudless (EOX), USGS Imagery, Esri World Imagery, Esri Ocean, Mapzen/USGS elevation, OpenStreetMap, OpenFreeMap, Regrid, RainViewer, GTFS-RT, ADS-B, NWS, EONET, GBIF, iNaturalist, Macrostrat, SoilGrids, Waymarked Trails, Open-Meteo, MET Norway, disease.sh";
 
 export {
   COVER_CLASS_FILTER,

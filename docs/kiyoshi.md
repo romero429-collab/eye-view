@@ -68,3 +68,9 @@ full tick. This route is the camera contract so she does not have to click.
 | `embed` | YouTube or another published page. |
 | `whep` | POST an SDP offer. `201` is the answer. DELETE the session to stop. |
 | `rtsp` | Not a browser protocol. Do not pull a URL that was not given to you. If it was, [MediaMTX](https://github.com/bluenviron/mediamtx) takes that RTSP source and publishes WHEP. Eye View already plays WHEP. |
+
+## SDP and an SFU
+
+WHEP is the negotiation. The player offers one receive-only video and one receive-only audio section (`a=recvonly`). The server answers with `201` and a session URL, then ICE and DTLS carry the media. A `406` means the server rejected that offer and sent a counter-offer. We stop there rather than guess a second codec.
+
+An SFU (Janus, mediasoup, MediaMTX) only forwards streams it was given. It does not discover cameras, and it does not fill a missing map tile. MediaMTX is already the SFU for an RTSP URL that belongs to us. A second one would not show Grand Falls-Windsor any more clearly.

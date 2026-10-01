@@ -63,6 +63,7 @@ import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground
 import { assetsFromGround } from "@/lib/proc-assets";
 import { pickFootprint, planFromSurvey, shellFromRing } from "@/lib/interior";
 import { registerGapTiles } from "@/lib/gap-tiles";
+import { registerOverzoom } from "@/lib/overzoom";
 import { paintSatelliteColors, satelliteColor } from "@/lib/satellite-drape";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
@@ -234,7 +235,7 @@ function buildStyle(): StyleSpecification {
       },
       imagery: {
         type: "raster",
-        tiles: [TILES.imagery],
+        tiles: ["img://esri/{z}/{y}/{x}"],
         tileSize: 256,
         maxzoom: 19,
         attribution: TILE_ATTRIBUTION,
@@ -265,6 +266,13 @@ function buildStyle(): StyleSpecification {
         tiles: [IMAGERY.find((item) => item.id === "usgs")!.tiles],
         tileSize: 256,
         maxzoom: 16,
+        attribution: TILE_ATTRIBUTION,
+      },
+      "imagery-depth": {
+        type: "raster",
+        tiles: [IMAGERY.find((item) => item.id === "depth")!.tiles],
+        tileSize: 256,
+        maxzoom: 13,
         attribution: TILE_ATTRIBUTION,
       },
       streets: {
@@ -540,6 +548,12 @@ function buildStyle(): StyleSpecification {
         id: "imagery-usgs",
         type: "raster",
         source: "imagery-usgs",
+        layout: { visibility: "none" },
+      },
+      {
+        id: "imagery-depth",
+        type: "raster",
+        source: "imagery-depth",
         layout: { visibility: "none" },
       },
       {
@@ -1109,13 +1123,13 @@ function buildStyle(): StyleSpecification {
         type: "fill-extrusion",
         source: "openmaptiles",
         "source-layer": "landcover",
-        minzoom: 14,
+        minzoom: 16,
         filter: ["match", ["get", "class"], ["wood"], true, false],
         layout: { visibility: "none" },
         paint: {
           "fill-extrusion-color": "#2a5a3c",
-          "fill-extrusion-height": 14,
-          "fill-extrusion-opacity": 0.62,
+          "fill-extrusion-height": 6,
+          "fill-extrusion-opacity": 0.4,
         },
       },
       {
@@ -2541,6 +2555,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       }
       if (cancelled || !hostRef.current) return;
       registerGapTiles(ml);
+      registerOverzoom(ml);
       map = new ml.Map({
         container: hostRef.current,
         style: buildStyle(),
