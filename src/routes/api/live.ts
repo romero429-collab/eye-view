@@ -90,8 +90,20 @@ export const Route = createFileRoute("/api/live")({
         if (!answered) return new Response(null, { status: 404 });
         return new Response(answered.body, {
           status: answered.status,
-          headers: { "content-type": "application/sdp" },
+          headers: {
+            "content-type": "application/sdp",
+            ...(answered.location ? { location: answered.location } : {}),
+          },
         });
+      },
+      DELETE: async ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("kind") !== "cctv-whep") {
+          return Response.json({ error: "Unknown live feed" }, { status: 400 });
+        }
+        const closed = await proxyWhep(url.searchParams.get("url") ?? "", "", "DELETE");
+        if (!closed) return new Response(null, { status: 404 });
+        return new Response(null, { status: closed.status || 204 });
       },
     },
   },

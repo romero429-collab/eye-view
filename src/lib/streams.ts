@@ -1,6 +1,12 @@
-/** How a published camera can be played in a browser. RTSP never can. */
+/** How a published camera can be played. RTSP never plays in the browser. */
 
-export type FeedKind = "image" | "hls" | "embed" | "whep";
+export type FeedKind = "image" | "hls" | "embed" | "whep" | "rtsp";
+
+export type PlayNote = {
+  kind: FeedKind;
+  browser: boolean;
+  note: string;
+};
 
 export function isWhep(feed: string, feedType = ""): boolean {
   const type = feedType.toLowerCase();
@@ -9,13 +15,44 @@ export function isWhep(feed: string, feedType = ""): boolean {
 }
 
 export function classifyFeed(feed: string, feedType = ""): FeedKind {
-  if (isWhep(feed, feedType)) return "whep";
-  if (/youtube\.com|youtu\.be/i.test(feed) || feedType === "iframe") return "embed";
-  if (feedType === "m3u8" || feed.includes(".m3u8")) return "hls";
+  const type = feedType.toLowerCase();
+  if (isWhep(feed, type)) return "whep";
+  if (type === "rtsp" || feed.startsWith("rtsp://") || feed.startsWith("rtsps://")) return "rtsp";
+  if (/youtube\.com|youtu\.be/i.test(feed) || type === "iframe") return "embed";
+  if (type === "m3u8" || feed.includes(".m3u8")) return "hls";
   return "image";
 }
 
-/** WHEP: the browser sends an SDP offer, the camera answers, media arrives as WebRTC. */
+export function playNote(feed: string, feedType = ""): PlayNote {
+  const kind = classifyFeed(feed, feedType);
+  if (kind === "whep") {
+    return {
+      kind,
+      browser: true,
+      note: "WHEP. POST an SDP offer (application/sdp, recvonly). A 201 answer starts WebRTC. DELETE the session URL to stop.",
+    };
+  }
+  if (kind === "rtsp") {
+    return {
+      kind,
+      browser: false,
+      note: "A browser cannot open RTSP. Pull it only if that URL was given to you. MediaMTX can take it as a source and publish WHEP, which Eye View already plays.",
+    };
+  }
+  if (kind === "hls") {
+    return {
+      kind,
+      browser: true,
+      note: "HLS playlist. Eye View proxies it when the operator blocks a direct request.",
+    };
+  }
+  if (kind === "embed") {
+    return { kind, browser: true, note: "Published page embed, usually YouTube." };
+  }
+  return { kind: "image", browser: true, note: "Still picture." };
+}
+
+/** WHEP draft: the player offers, the server answers with 201 and a Location session. */
 export async function playWhep(
   video: HTMLVideoElement,
   endpoint: string,
@@ -53,10 +90,16 @@ export async function playWhep(
     body: pc.localDescription?.sdp ?? "",
     signal,
   });
-  if (!res.ok) {
+  if (res.status !== 200 && res.status !== 201) {
     pc.close();
-    throw new Error("whep");
+    throw new Error(res.status === 406 ? "whep-counter-offer" : "whep");
   }
+  const location = res.headers.get("Location");
   await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
-  return () => pc.close();
+  return () => {
+    pc.close();
+    if (location) {
+      void fetch(`/api/live?kind=cctv-whep&url=${encodeURIComponent(location)}`, { method: "DELETE" });
+    }
+  };
 }

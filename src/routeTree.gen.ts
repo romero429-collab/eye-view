@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiLiveRouteImport } from './routes/api/live'
+import { Route as ApiSenseRouteImport } from './routes/api/sense'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const ApiLiveRoute = ApiLiveRouteImport.update({
   path: '/api/live',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSenseRoute = ApiSenseRouteImport.update({
+  id: '/api/sense',
+  path: '/api/sense',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/live': typeof ApiLiveRoute
+  '/api/sense': typeof ApiSenseRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/live': typeof ApiLiveRoute
+  '/api/sense': typeof ApiSenseRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/live': typeof ApiLiveRoute
+  '/api/sense': typeof ApiSenseRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/live'
+  fullPaths: '/' | '/api/live' | '/api/sense'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/live'
-  id: '__root__' | '/' | '/api/live'
+  to: '/' | '/api/live' | '/api/sense'
+  id: '__root__' | '/' | '/api/live' | '/api/sense'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiLiveRoute: typeof ApiLiveRoute
+  ApiSenseRoute: typeof ApiSenseRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLiveRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/sense': {
+      id: '/api/sense'
+      path: '/api/sense'
+      fullPath: '/api/sense'
+      preLoaderRoute: typeof ApiSenseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiLiveRoute: ApiLiveRoute,
+  ApiSenseRoute: ApiSenseRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -13,7 +13,7 @@ import {
   type GbifOccurrence,
   type GbifVernacular,
 } from "./gbif.ts";
-import { isWhep } from "./streams.ts";
+import { classifyFeed, playNote } from "./streams.ts";
 import { lidarCoverageLine, pickElevation, inUsgsCoverage } from "./ground.ts";
 import { shotsFromPanoramax } from "./street.ts";
 import { parseAlerts, parseForecast, parseMetNo, parseNws, type WeatherBrief } from "./weather.ts";
@@ -1235,19 +1235,29 @@ export async function allowedCctvStill(raw: string): Promise<Uint8Array | null> 
   }
 }
 
-export async function proxyWhep(raw: string, sdp: string): Promise<{ status: number; body: string } | null> {
+export async function proxyWhep(
+  raw: string,
+  sdp: string,
+  method: "POST" | "DELETE" = "POST",
+): Promise<{ status: number; body: string; location: string } | null> {
   const target = publicHttpUrl(raw);
   if (!target || !target.startsWith("https://") || !/\/whep\b/i.test(target)) return null;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 12_000);
   try {
     const res = await fetch(target, {
-      method: "POST",
+      method,
       signal: ctrl.signal,
-      headers: { "Content-Type": "application/sdp", Accept: "application/sdp" },
-      body: sdp.slice(0, 50_000),
+      headers:
+        method === "POST"
+          ? { "Content-Type": "application/sdp", Accept: "application/sdp" }
+          : { Accept: "application/sdp" },
+      body: method === "POST" ? sdp.slice(0, 50_000) : undefined,
     });
-    return { status: res.status, body: await res.text() };
+    const loc = res.headers.get("location");
+    const absolute = loc ? new URL(loc, target).toString() : "";
+    const location = /\/whep\b/i.test(absolute) ? absolute : "";
+    return { status: res.status, body: await res.text(), location };
   } catch {
     return null;
   } finally {
@@ -1457,18 +1467,32 @@ async function cameraDetail(id: string): Promise<FeatureCollection> {
   const lon = Number(row.lng);
   const feed = String(row.feed_url ?? "");
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return empty();
-  const whep = isWhep(feed, String(row.feed_type ?? ""));
-  const embed = whep ? "" : youtubeEmbed(feed) || (row.feed_type === "iframe" && feed.startsWith("https://") ? feed : "");
-  const stream = !whep && (row.feed_type === "m3u8" || feed.includes(".m3u8"));
+  const play = classifyFeed(feed, String(row.feed_type ?? ""));
+  const whep = play === "whep";
+  const embed =
+    play === "embed" ? youtubeEmbed(feed) || (feed.startsWith("https://") ? feed : "") : "";
+  const stream = play === "hls";
   const live = Boolean(embed) || stream || whep;
   const place = [row.city, row.state, row.country].filter(Boolean).join(", ");
   const facts = [
     { label: "Id", value: id },
-    { label: "Kind", value: live ? "Live video" : String(row.category || "Still") },
+    { label: "Kind", value: live ? "Live video" : play === "rtsp" ? "RTSP" : String(row.category || "Still") },
     place ? { label: "Place", value: place } : null,
     row.country ? { label: "Country", value: String(row.country) } : null,
     row.source ? { label: "Source", value: String(row.source) } : null,
-    { label: "Picture", value: whep ? "WebRTC live" : embed ? "Live embed" : stream ? "Live video feed" : "Public still" },
+    {
+      label: "Picture",
+      value:
+        play === "rtsp"
+          ? "RTSP — bridge required"
+          : whep
+            ? "WebRTC live"
+            : embed
+              ? "Live embed"
+              : stream
+                ? "Live video feed"
+                : "Public still",
+    },
   ].filter((fact): fact is { label: string; value: string } => Boolean(fact));
   return {
     type: "FeatureCollection",
@@ -1856,6 +1880,58 @@ function plotFromNominatim(place: NominatimPlace): Feature | null {
       ].filter(Boolean),
     ),
   });
+}
+
+export async function senseLook(lat?: number, lng?: number, name?: string) {
+  const look =
+    lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)
+      ? { lng, lat }
+      : null;
+  let cell: { key: string; cameras: number; live: number } | null = null;
+  if (look) {
+    const rows = await loadCameraCell(Math.floor(look.lat), Math.floor(look.lng));
+    cell = {
+      key: `${Math.floor(look.lat)}_${Math.floor(look.lng)}`,
+      cameras: rows.length,
+      live: rows.filter((row) => row.live).length,
+    };
+  }
+  let camera: {
+    id: string;
+    title: string;
+    play: string;
+    browser: boolean;
+    note: string;
+  } | null = null;
+  if (name) {
+    const rows = await openCctvBatch([name]);
+    const row = rows[0];
+    if (row) {
+      const feed = String(row.feed_url ?? "");
+      const note = playNote(feed, String(row.feed_type ?? ""));
+      camera = {
+        id: name,
+        title: String(row.name ?? name),
+        play: note.kind,
+        browser: note.browser,
+        note: note.note,
+      };
+    }
+  }
+  return {
+    organ: "eye-view" as const,
+    consumes: "PerceptionFrame" as const,
+    look,
+    cell,
+    camera,
+    playback: {
+      whep: "POST application/sdp offer. 201 is the answer. DELETE the Location session to stop.",
+      rtsp: "Not a browser protocol. An authorized URL can be a MediaMTX source. Play the WHEP address that bridge publishes.",
+      hls: "Playlist. Proxied when the operator blocks a direct request.",
+      embed: "YouTube or another published page.",
+      image: "Still JPEG.",
+    },
+  };
 }
 
 function plotKind(tags: Record<string, string>, el: OverpassEl): "plot" | "building" | "address" {

@@ -53,3 +53,18 @@ Nothing here pretends to be Kiyoshi herself. She is bound to her owner; this glo
 local feedback loop. `src/lib/zoning-rules.ts` is the coordinator. When the OS
 grows a Reality Integration Layer, it should ingest `PerceptionFrame`, not scrape
 the DOM.
+
+## Machine door
+
+`GET /api/sense?lat=&lng=&name=` is how software Kiyoshi looks. It returns the
+organ name, the cell under that look-at, and — when `name` is a camera id — how
+that feed can be played. She consumes `PerceptionFrame` from the HUD for the
+full tick. This route is the camera contract so she does not have to click.
+
+| Play | What she does |
+| --- | --- |
+| `image` | Read the still. |
+| `hls` | Playlist. The app proxies it when the operator blocks a direct request. |
+| `embed` | YouTube or another published page. |
+| `whep` | POST an SDP offer. `201` is the answer. DELETE the session to stop. |
+| `rtsp` | Not a browser protocol. Do not pull a URL that was not given to you. If it was, [MediaMTX](https://github.com/bluenviron/mediamtx) takes that RTSP source and publishes WHEP. Eye View already plays WHEP. |
