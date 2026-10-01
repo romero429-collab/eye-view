@@ -16,4 +16,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - name: App tests
+        run: node --experimental-strip-types --test $(find src -name '*.test.ts' | sort)
