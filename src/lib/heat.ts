@@ -329,4 +329,6 @@ export const OVERLAY_INK: Partial<Record<string, string>> = {
   health: "#7ecad4",
   plots: "#7ecad4",
   rail: "#e7eaed",
+  power: "#d946ef",
+  cctv: "#f5b942",
 };

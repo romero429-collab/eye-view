@@ -29,6 +29,7 @@ import type {
   MapTransform,
   ViewMode,
 } from "@/lib/map-types";
+import { boundsAround, cctvInView } from "@/lib/cctv-view";
 import { HOME_ROTATION } from "@/lib/map-types";
 import { GlobeFallback } from "@/components/globe-fallback";
 import { briefFromProperties, mergeFacts, weatherFacts } from "@/lib/weather";
@@ -40,6 +41,7 @@ import {
   COVER_FILL_COLOR,
   DISTRICT_VIEW,
   HOME_VIEW,
+  standPoint,
   LANDUSE_CLASS_FILTER,
   QUAKES_URL,
   RAINVIEWER_MAPS,
@@ -59,6 +61,7 @@ import { destination, wrapBearing } from "@/lib/spatial";
 import { stemsFromPlants, terrainExaggeration, GEDI_EXPLAIN } from "@/lib/ground";
 import { assetsFromGround } from "@/lib/proc-assets";
 import { pickFootprint, planFromSurvey, shellFromRing } from "@/lib/interior";
+import { registerGapTiles } from "@/lib/gap-tiles";
 import { paintSatelliteColors, satelliteColor } from "@/lib/satellite-drape";
 import { countryAtLngLat } from "@/lib/spatial-index";
 import {
@@ -239,14 +242,14 @@ function buildStyle(): StyleSpecification {
         type: "raster",
         tiles: [IMAGERY.find((item) => item.id === "viirs")!.tiles],
         tileSize: 256,
-        maxzoom: 9,
+        maxzoom: IMAGERY.find((item) => item.id === "viirs")!.maxzoom,
         attribution: TILE_ATTRIBUTION,
       },
       "imagery-modis": {
         type: "raster",
         tiles: [IMAGERY.find((item) => item.id === "modis")!.tiles],
         tileSize: 256,
-        maxzoom: 9,
+        maxzoom: IMAGERY.find((item) => item.id === "modis")!.maxzoom,
         attribution: TILE_ATTRIBUTION,
       },
       "imagery-sentinel": {
@@ -430,6 +433,10 @@ function buildStyle(): StyleSpecification {
         data: { type: "FeatureCollection", features: [] },
       },
       power: {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      cctv: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
@@ -1359,6 +1366,19 @@ function buildStyle(): StyleSpecification {
         },
       },
       {
+        id: "cctv",
+        type: "circle",
+        source: "cctv",
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": ["case", ["==", ["get", "live"], 1], 9, 7],
+          "circle-color": ["case", ["==", ["get", "live"], 1], "#ff4d4d", "#f5b942"],
+          "circle-opacity": 1,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1.6,
+        },
+      },
+      {
         id: "osm-fill",
         type: "fill",
         source: "osm",
@@ -1726,6 +1746,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
   events: ["events"],
   iot: ["iot"],
   power: ["power-line", "power-fill", "power-site"],
+  cctv: ["cctv"],
 };
 
 const POINT_HIT_LAYERS = [
@@ -1745,6 +1766,7 @@ const POINT_HIT_LAYERS = [
   "alerts",
   "events",
   "iot",
+  "cctv",
   "geology",
   "ditches",
 ];
@@ -1861,6 +1883,7 @@ function layerName(layerId: string, kind: MapObjectKind): string {
   if (kind === "rail") return "Rail";
   if (kind === "health") return "Health";
   if (kind === "power" || layerId.startsWith("power")) return "Power";
+  if (kind === "camera" || layerId === "cctv") return "CCTV";
   if (kind === "alert") return "Alerts";
   if (kind === "event") return "Events";
   if (kind === "country") return "Metric";
@@ -1936,6 +1959,8 @@ function featureToObject(
       "address",
       "zone",
       "sensor",
+      "power",
+      "camera",
     ].includes(rawKind)
       ? rawKind
       : layerId === "quakes"
@@ -2089,7 +2114,17 @@ function featureToObject(
     layer,
     facts,
     trend: parseTrend(props.trend),
-    photo: typeof props.photo === "string" && props.photo.startsWith("https://") ? props.photo : null,
+    photo:
+      typeof props.photo === "string" &&
+      (props.photo.startsWith("https://") || props.photo.startsWith("/api/live?kind=cctv-still&"))
+        ? props.photo
+        : null,
+    video:
+      typeof props.video === "string" &&
+      (props.video.startsWith("https://") || props.video.startsWith("/api/live?kind=cctv-hls&"))
+        ? props.video
+        : null,
+    embed: typeof props.embed === "string" && props.embed.startsWith("https://") ? props.embed : null,
     lng: lngLat?.lng,
     lat: lngLat?.lat,
   };
@@ -2270,9 +2305,13 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       const map = mapRef.current;
       if (!map) return;
       const center = map.getCenter();
+      const spot = standPoint(lng ?? center.lng, lat ?? center.lat);
+      if (spot.moved) {
+        liveNoteRef.current?.("The globe center is empty water. Standing in a mapped block instead.");
+      }
       map.easeTo({
-        center: [lng ?? center.lng, lat ?? center.lat],
-        zoom: Math.max(map.getZoom(), 17.2),
+        center: [spot.lng, spot.lat],
+        zoom: Math.max(spot.moved ? 17.4 : map.getZoom(), 17.2),
         pitch: 68,
         duration: 800,
       });
@@ -2281,22 +2320,37 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       const map = mapRef.current;
       if (!map) return;
       indoorsRef.current = true;
+      const spot = standPoint(lng, lat);
+      const hereLng = spot.lng;
+      const hereLat = spot.lat;
+      if (spot.moved) {
+        liveNoteRef.current?.("No streets or imagery at the globe center. Opening a real block.");
+      }
       const rings: number[][][] = [];
-      try {
-        const feats = map.querySourceFeatures("openmaptiles", { sourceLayer: "building" });
-        for (const feat of feats) {
-          const g = feat.geometry;
-          if (g.type === "Polygon") rings.push(g.coordinates[0] as number[][]);
-          else if (g.type === "MultiPolygon") {
-            for (const poly of g.coordinates) {
-              if (poly[0]) rings.push(poly[0] as number[][]);
+      if (!spot.moved) {
+        try {
+          const feats = map.querySourceFeatures("openmaptiles", { sourceLayer: "building" });
+          for (const feat of feats) {
+            const g = feat.geometry;
+            if (g.type === "Polygon") rings.push(g.coordinates[0] as number[][]);
+            else if (g.type === "MultiPolygon") {
+              for (const poly of g.coordinates) {
+                if (poly[0]) rings.push(poly[0] as number[][]);
+              }
             }
           }
+        } catch {
+          /* building tiles not in yet */
         }
-      } catch {
-        /* building tiles not in yet */
       }
-      const hit = pickFootprint(rings, lng, lat);
+      const hit = spot.moved ? null : pickFootprint(rings, hereLng, hereLat);
+      map.easeTo({
+        center: [hereLng, hereLat],
+        zoom: 17.6,
+        pitch: 58,
+        bearing: map.getBearing(),
+        duration: 700,
+      });
       const show = (fc: GeoJSON.FeatureCollection, center: [number, number]) => {
         (map.getSource("interior") as GeoJSONSource | undefined)?.setData(fc);
         const zoom = map.getZoom();
@@ -2327,7 +2381,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       void (async () => {
         try {
           const res = await fetch(
-            `/api/live?kind=indoor&lat=${lat}&lng=${lng}&west=${lng - 0.001}&south=${lat - 0.001}&east=${lng + 0.001}&north=${lat + 0.001}`,
+            `/api/live?kind=indoor&lat=${hereLat}&lng=${hereLng}&west=${hereLng - 0.001}&south=${hereLat - 0.001}&east=${hereLng + 0.001}&north=${hereLat + 0.001}`,
           );
           if (!res.ok || token !== interiorToken.current) return;
           const data = (await res.json()) as GeoJSON.FeatureCollection;
@@ -2349,7 +2403,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
             const floor = plan.features.features.find((f) => f.properties?.part === "floor");
             const ring = floor?.geometry.type === "Polygon" ? floor.geometry.coordinates[0] : null;
             const c = ring?.[0];
-            show(plan.features, c ? [c[0], c[1]] : [lng, lat]);
+            show(plan.features, c ? [c[0], c[1]] : [hereLng, hereLat]);
             const level = plan.levels[0] ?? "0";
             for (const id of ["interior-floor", "interior-walls", "interior-furn"]) {
               if (map.getLayer(id)) map.setFilter(id, ["==", ["get", "level"], level]);
@@ -2361,7 +2415,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
             const buildingRings = buildings
               .map((f) => (f.geometry?.type === "Polygon" ? (f.geometry.coordinates[0] as number[][]) : null))
               .filter((r): r is number[][] => Boolean(r));
-            const picked = pickFootprint(buildingRings, lng, lat);
+            const picked = pickFootprint(buildingRings, hereLng, hereLat);
             if (!picked) return;
             const levels = String(buildings[0]?.properties?.levels ?? "");
             show(
@@ -2376,7 +2430,17 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
               levels: ["0"],
               note: levels ? `Footprint · ${levels} levels on record · no scan` : "Footprint only · no 360 scan",
             });
+            return;
           }
+          interiorMetaRef.current?.({
+            measured: false,
+            levels: [],
+            note: "No building is mapped here, so there is no interior to enter.",
+          });
+          (map.getSource("interior") as GeoJSONSource | undefined)?.setData({
+            type: "FeatureCollection",
+            features: [],
+          });
         } catch {
           /* keep the tile footprint */
         }
@@ -2468,6 +2532,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         /* parse tiles on the main thread */
       }
       if (cancelled || !hostRef.current) return;
+      registerGapTiles(ml);
       map = new ml.Map({
         container: hostRef.current,
         style: buildStyle(),
@@ -2955,6 +3020,21 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
 
         function deepen(object: MapObject) {
           pickObject(object);
+          const feedId = object.facts?.find((fact) => fact.label === "Id")?.value;
+          if (object.kind === "camera" && feedId && !object.video && !object.photo) {
+            liveNoteRef.current?.("Opening camera…");
+            void fetch(`/api/live?kind=cctv&name=${encodeURIComponent(feedId)}`)
+              .then(async (res) => (res.ok ? res.json() : null))
+              .then((data: GeoJSON.FeatureCollection | null) => {
+                const feat = data?.features?.[0];
+                if (!feat) return;
+                pickObject(featureToObject(feat, "cctv", { lng, lat }));
+              })
+              .catch(() => {
+                /* the dot is still the camera */
+              });
+            return;
+          }
           void loadSiteFacts().then((extra) => {
             pickObject({ ...object, facts: mergeFacts(object.facts, extra) });
           });
@@ -3553,6 +3633,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       "health",
       "iot",
       "power",
+      "cctv",
       "ground",
       "bugs",
     ] as const;
@@ -3574,9 +3655,11 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
                 : kind;
 
     const pull = async () => {
-      const bounds = map.getBounds();
+      const canvas = map.getCanvas();
+      const center = map.getCenter();
       const zoom = map.getZoom();
-      const bbox = `west=${bounds.getWest()}&south=${bounds.getSouth()}&east=${bounds.getEast()}&north=${bounds.getNorth()}&zoom=${zoom.toFixed(2)}&lat=${map.getCenter().lat.toFixed(5)}&lng=${map.getCenter().lng.toFixed(5)}`;
+      const frame = boundsAround(center.lng, center.lat, zoom, canvas.clientWidth || 390, canvas.clientHeight || 700);
+      const bbox = `west=${frame.west}&south=${frame.south}&east=${frame.east}&north=${frame.north}&zoom=${zoom.toFixed(2)}&lat=${center.lat.toFixed(5)}&lng=${center.lng.toFixed(5)}`;
       const notes: string[] = [];
       await Promise.all(
         active.map(async (kind) => {
@@ -3587,6 +3670,21 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
                 features: [],
               });
               notes.push("Zoom in for power lines");
+              return;
+            }
+            if (kind === "cctv" && zoom < 4) {
+              (map.getSource("cctv") as GeoJSONSource | undefined)?.setData({
+                type: "FeatureCollection",
+                features: [],
+              });
+              notes.push("Zoom in for cameras");
+              return;
+            }
+            if (kind === "cctv") {
+              const data = await cctvInView(frame.west, frame.south, frame.east, frame.north, center.lat, center.lng);
+              if (cancelled) return;
+              (map.getSource("cctv") as GeoJSONSource | undefined)?.setData(data);
+              notes.push(data.features.length ? `${data.features.length} cameras` : "No public cameras in this view");
               return;
             }
             const res = await fetch(`/api/live?kind=${kind}&${bbox}`);
@@ -3736,10 +3834,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
       (onMove as { t?: number }).t = window.setTimeout(() => void pull(), 700);
     };
     map.on("moveend", onMove);
+    map.on("zoomend", onMove);
     return () => {
       cancelled = true;
       window.clearInterval(id);
       map.off("moveend", onMove);
+      map.off("zoomend", onMove);
     };
   }, [
     overlays.transit,
@@ -3752,6 +3852,7 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     overlays.health,
     overlays.iot,
     overlays.power,
+    overlays.cctv,
     overlays.ground,
     overlays.bugs,
     overlays.rail,

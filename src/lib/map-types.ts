@@ -30,6 +30,7 @@ export type MapObjectKind =
   | "sensor"
   | "radar"
   | "power"
+  | "camera"
   | "place";
 
 export type MapObject = {
@@ -42,6 +43,8 @@ export type MapObject = {
   facts?: Array<{ label: string; value: string }>;
   trend?: number[];
   photo?: string | null;
+  video?: string | null;
+  embed?: string | null;
   lng?: number;
   lat?: number;
   /** Zone memory — present when this pick is a mutable district. */

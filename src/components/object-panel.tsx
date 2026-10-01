@@ -250,11 +250,18 @@ export function ObjectPanel({
   const Icon = meta?.icon;
   const [nearby, setNearby] = useState<NearbyHit[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [picture, setPicture] = useState<string | null>(null);
+  const [videoFailed, setVideoFailed] = useState(false);
   const facts = object?.facts ?? [];
   const tiles = facts.filter((fact) => TILE_LABELS.has(fact.label) && fact.value.length < 28);
   const layerRows = facts.filter((fact) => !PLACE_LABELS.has(fact.label) && !TILE_LABELS.has(fact.label));
   const placeRows = facts.filter((fact) => PLACE_LABELS.has(fact.label) && !TILE_LABELS.has(fact.label) && fact.label !== "Look-at");
   const band = facts.find((fact) => fact.label === "Band")?.value ?? "";
+
+  useEffect(() => {
+    setPicture(null);
+    setVideoFailed(false);
+  }, [object?.title, object?.photo, object?.video]);
 
   useEffect(() => {
     if (object?.lng == null || object.lat == null) {
@@ -324,13 +331,45 @@ export function ObjectPanel({
               </Button>
             </header>
             <p className="mt-3 text-sm leading-relaxed text-muted">{object.detail}</p>
-            {object.photo ? (
-              <img
-                src={object.photo}
-                alt={object.title}
-                className="mt-3 h-36 w-full rounded-[var(--radius-sm)] object-cover"
-                crossOrigin="anonymous"
+            {object.embed ? (
+              <iframe
+                key={object.embed}
+                src={object.embed}
+                title={object.title}
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
+                className="mt-3 aspect-video w-full rounded-[var(--radius-sm)] bg-black"
               />
+            ) : object.video ? (
+              videoFailed ? (
+                <p className="mt-3 rounded-[var(--radius-sm)] bg-black px-3 py-6 text-center text-sm text-muted">
+                  This live feed is offline or the operator blocked the player.
+                </p>
+              ) : (
+                <video
+                  key={object.video}
+                  src={object.video}
+                  controls
+                  autoPlay
+                  muted
+                  playsInline
+                  onError={() => setVideoFailed(true)}
+                  className="mt-3 aspect-video w-full rounded-[var(--radius-sm)] bg-black"
+                />
+              )
+            ) : object.photo ? (
+              <button
+                type="button"
+                className="mt-3 block w-full"
+                onClick={() => setPicture(object.photo ?? null)}
+                aria-label="Open picture"
+              >
+                <img
+                  src={object.photo}
+                  alt={object.title}
+                  className="h-36 w-full rounded-[var(--radius-sm)] object-cover"
+                />
+              </button>
             ) : null}
             {object.trend && object.trend.length > 1 ? (
               <div className="mt-3">
@@ -447,6 +486,28 @@ export function ObjectPanel({
           </details>
         ) : null}
       </div>
+      {picture ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/92 p-4"
+          onClick={() => setPicture(null)}
+          role="dialog"
+          aria-label="Picture"
+        >
+          <button
+            type="button"
+            className="absolute top-4 right-4 rounded-full bg-white/10 px-4 py-2 text-sm text-white"
+            onClick={() => setPicture(null)}
+          >
+            Close
+          </button>
+          <img
+            src={picture}
+            alt=""
+            className="max-h-[90vh] max-w-[94vw] object-contain"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </aside>
   );
 }

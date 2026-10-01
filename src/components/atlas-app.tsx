@@ -6,7 +6,6 @@ import { ObjectPanel } from "@/components/object-panel";
 import { MapQuery } from "@/components/map-query";
 import { MapLegend, OverlayKey } from "@/components/map-legend";
 import { MapTooltip } from "@/components/map-tooltip";
-import { MetricSwitcher } from "@/components/metric-switcher";
 import { LayerPanel } from "@/components/layer-panel";
 import { HierarchyPanel } from "@/components/hierarchy-panel";
 import { WalkHud } from "@/components/walk-hud";
@@ -24,7 +23,7 @@ import { COUNTRIES, lookupCountry } from "@/lib/countries";
 import { type MetricId } from "@/lib/metrics";
 import type { GlobeRotation, HoverInfo, MapObject, MapTransform, ViewMode } from "@/lib/map-types";
 import { HOME_ROTATION } from "@/lib/map-types";
-import { altitudeFromZoom, DEFAULT_OVERLAYS, DISTRICT_VIEW, HOME_VIEW, IMAGERY, type ImageryId, type OverlayId } from "@/lib/basemaps";
+import { altitudeFromZoom, DEFAULT_OVERLAYS, DISTRICT_VIEW, HOME_VIEW, type ImageryId, type OverlayId } from "@/lib/basemaps";
 import { WEATHER_LEVELS, type WeatherLevelId } from "@/lib/weather-levels";
 import { assembleOverlays, type MapIntent, QUERY_EXAMPLES } from "@/lib/map-query";
 import { coordinateToggle, evaluateRules, needsDistrictScale, type SceneSample } from "@/lib/zoning-rules";
@@ -349,8 +348,9 @@ export function AtlasApp() {
   );
 
   const onMetricChange = (id: MetricId) => {
-    setMetric(id);
     setHover(null);
+    setMetric(id);
+    setOverlays((prev) => ({ ...prev, metric: !(prev.metric && metric === id) }));
   };
 
   const onViewMode = (mode: ViewMode) => {
@@ -477,9 +477,6 @@ export function AtlasApp() {
         </div>
         <div className="min-w-0 flex-1">
           <MapQuery onAsk={applyIntent} onPickCountry={goToCountry} examples={queryExamples} />
-        </div>
-        <div className="min-w-0 md:max-w-xl md:flex-1">
-          <MetricSwitcher value={metric} onChange={onMetricChange} />
         </div>
       </header>
       ) : null}
@@ -629,34 +626,13 @@ export function AtlasApp() {
             <div className="pointer-events-auto flex min-w-0 flex-col items-start gap-2">
               {hudOpen && layersOpen ? (
                 <div className="max-h-[min(46dvh,24rem)] w-[min(calc(100vw-6.5rem),18rem)] overflow-y-auto overscroll-contain">
-                  <div className="mb-2 rounded-[var(--radius-md)] border border-border bg-surface p-1.5 shadow-[var(--shadow-panel)]">
-                    <p className="px-1.5 pt-0.5 pb-1 text-xs font-medium uppercase tracking-label text-subtle">
-                      Satellite
-                    </p>
-                    <div className="flex flex-col gap-0.5">
-                      {IMAGERY.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          aria-pressed={imagery === item.id}
-                          title={item.detail}
-                          onClick={() => setImagery(item.id)}
-                          className={cn(
-                            "flex min-h-10 items-center justify-between gap-2 rounded-[var(--radius-xs)] px-2 text-left text-sm",
-                            imagery === item.id ? "text-fg" : "text-muted",
-                          )}
-                        >
-                          <span className="font-medium">{item.label}</span>
-                          <span className="truncate text-[11px] text-subtle">
-                            {item.id === "viirs" || item.id === "modis" ? "yesterday" : item.id === "sentinel" ? "2024" : item.id === "usgs" ? "US aerial" : "mosaic"}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                   <LayerPanel
                     value={overlays}
                     onToggle={toggleOverlay}
+                    metric={metric}
+                    onMetric={onMetricChange}
+                    imagery={imagery}
+                    onImagery={setImagery}
                     liveNote={liveNote || undefined}
                   />
                   <div className="mt-2">

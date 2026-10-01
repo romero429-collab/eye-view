@@ -4,6 +4,7 @@ import {
   Bird,
   Bug,
   Bus,
+  Cctv,
   CloudRain,
   Fence,
   Gem,
@@ -134,6 +135,11 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
     usage:
       "OpenStreetMap power lines, substations, and plants, drawn in purple so they read on the satellite. Lighter violet is low voltage, deep magenta is about 230 kV, and the brightest violet is extra-high voltage. Zoom in. The operator and voltage are whatever was tagged.",
   },
+  cctv: {
+    icon: Cctv,
+    usage:
+      "Public cameras worldwide. Amber is a still. Red is a live video feed. Click a dot to open it. Dallas and every other city with a published camera are in the same index.",
+  },
 };
 
 export const OBJECT_META: Record<MapObjectKind, LayerMeta> = {
@@ -176,6 +182,7 @@ export const OBJECT_META: Record<MapObjectKind, LayerMeta> = {
     usage: "The RainViewer echo under the tap. Blue is light, yellow is moderate, red is heavy.",
   },
   power: LAYER_META.power,
+  camera: LAYER_META.cctv,
   place: {
     icon: MapPin,
     usage: "The named place under the tap. Not a lot line unless the Plots layer is on.",

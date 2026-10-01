@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { loadLiveFeed, type LiveKind } from "@/lib/live-server";
+import { allowedCctvStill, loadLiveFeed, nmCameraStill, proxyCameraStream, type LiveKind } from "@/lib/live-server";
 
 const KINDS = new Set<LiveKind>([
   "transit",
@@ -22,6 +22,7 @@ const KINDS = new Set<LiveKind>([
   "street",
   "weather",
   "power",
+  "cctv",
 ]);
 
 export const Route = createFileRoute("/api/live")({
@@ -29,7 +30,31 @@ export const Route = createFileRoute("/api/live")({
     handlers: {
       GET: async ({ request }) => {
         const url = new URL(request.url);
-        const kind = url.searchParams.get("kind") as LiveKind | null;
+        const asked = url.searchParams.get("kind");
+        if (asked === "cctv-still") {
+          const name = url.searchParams.get("name") ?? "";
+          const feed = url.searchParams.get("url") ?? "";
+          const still = name ? await nmCameraStill(name) : await allowedCctvStill(feed);
+          if (!still) return new Response(null, { status: 404 });
+          return new Response(still.buffer as ArrayBuffer, {
+            headers: {
+              "content-type": "image/jpeg",
+              "cache-control": "public, max-age=20",
+            },
+          });
+        }
+        if (asked === "cctv-hls") {
+          const feed = url.searchParams.get("url") ?? "";
+          const stream = await proxyCameraStream(feed);
+          if (!stream) return new Response(null, { status: 404 });
+          return new Response(stream.body.buffer as ArrayBuffer, {
+            headers: {
+              "content-type": stream.type,
+              "cache-control": "no-store",
+            },
+          });
+        }
+        const kind = asked as LiveKind | null;
         if (!kind || !KINDS.has(kind)) {
           return Response.json({ error: "Unknown live feed" }, { status: 400 });
         }

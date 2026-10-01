@@ -40,6 +40,7 @@ const OVERLAY_WORDS: Array<{ id: OverlayId; re: RegExp }> = [
   { id: "health", re: /\b(health|sickness|disease)\b/ },
   { id: "iot", re: /\b(iot|sensors?|metar|weather stations?|nervous system|what's changing|what is changing|iom|minds?|skills?|calibrat(?:e|ion)|what did we learn)\b/ },
   { id: "power", re: /\b(power|grid|electrical|substation|transmission|power ?lines?)\b/ },
+  { id: "cctv", re: /\b(cctv|cameras?|surveillance|webcams?|traffic cams?)\b/ },
 ];
 
 const WALK_RE =

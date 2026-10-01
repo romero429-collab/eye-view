@@ -1,3 +1,5 @@
+import { gapTileUrl } from "./gap-tiles.ts";
+
 export type OverlayId =
   | "metric"
   | "labels"
@@ -19,7 +21,8 @@ export type OverlayId =
   | "alerts"
   | "events"
   | "iot"
-  | "power";
+  | "power"
+  | "cctv";
 
 export type OverlayGroup = "map" | "animals" | "live";
 
@@ -175,16 +178,16 @@ export const OVERLAYS: OverlayDef[] = [
     group: "live",
   },
   {
-    id: "power",
-    label: "Power",
-    blurb: "Lines, substations, and plants",
+    id: "cctv",
+    label: "CCTV",
+    blurb: "Mapped cameras. A still only if the operator published one.",
     live: true,
     group: "live",
   },
 ];
 
 export const DEFAULT_OVERLAYS: OverlayState = {
-  metric: true,
+  metric: false,
   labels: true,
   streets: false,
   trails: false,
@@ -205,6 +208,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   events: false,
   iot: false,
   power: false,
+  cctv: false,
 };
 
 export function gibsNdviTileUrl(): string {
@@ -242,14 +246,6 @@ export const TILES = {
 
 export type ImageryId = "esri" | "viirs" | "modis" | "sentinel" | "usgs";
 
-function recentDay(): string {
-  return new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
-function gibsTrueColor(layer: string): string {
-  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${recentDay()}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
-}
-
 /** Pictures of the ground, not overlays. One is visible at a time. */
 export const IMAGERY: Array<{
   id: ImageryId;
@@ -270,17 +266,17 @@ export const IMAGERY: Array<{
   {
     id: "viirs",
     label: "VIIRS",
-    detail: "Suomi NPP true color from yesterday. 375 m, clouds left in.",
-    tiles: gibsTrueColor("VIIRS_SNPP_CorrectedReflectance_TrueColor"),
-    maxzoom: 9,
+    detail: "Suomi NPP true color. The globe is one picture: missed orbits filled from earlier passes, brightness bands eased.",
+    tiles: gapTileUrl("viirs"),
+    maxzoom: 3,
     layerId: "imagery-viirs",
   },
   {
     id: "modis",
     label: "MODIS",
-    detail: "Terra true color from yesterday. 250 m, clouds left in.",
-    tiles: gibsTrueColor("MODIS_Terra_CorrectedReflectance_TrueColor"),
-    maxzoom: 9,
+    detail: "Terra true color. The globe is one picture, not separate tiles. Missed orbits are filled, and the stripe between orbits is eased.",
+    tiles: gapTileUrl("modis"),
+    maxzoom: 3,
     layerId: "imagery-modis",
   },
   {
@@ -329,6 +325,14 @@ export const HOME_VIEW = {
   lat: 22,
   zoom: 1.85,
 };
+
+/** The globe opens on empty water. Standing there is a gray tile and one block. */
+export function standPoint(lng: number, lat: number): { lng: number; lat: number; moved: boolean } {
+  const nearSeed = Math.abs(lat - HOME_VIEW.lat) < 1.2 && Math.abs(lng - HOME_VIEW.lng) < 1.2;
+  if (!nearSeed) return { lng, lat, moved: false };
+  const spot = DISTRICT_SPOTS.residential;
+  return { lng: spot.lng, lat: spot.lat, moved: true };
+}
 
 /** City-scale look-at used when a query asks for districts / walk from orbit. */
 export const DISTRICT_VIEW = {

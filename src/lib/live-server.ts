@@ -2,6 +2,8 @@ import GtfsMod from "gtfs-realtime-bindings";
 
 const GtfsRealtimeBindings = (GtfsMod as { default?: typeof GtfsMod }).default ?? GtfsMod;
 import type { Feature, FeatureCollection, Geometry } from "geojson";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import {
   WILDLIFE_TAXA,
   occurrenceFacts,
@@ -39,7 +41,8 @@ export type LiveKind =
   | "indoor"
   | "street"
   | "weather"
-  | "power";
+  | "power"
+  | "cctv";
 
 export type LiveQuery = {
   kind: LiveKind;
@@ -1106,6 +1109,487 @@ async function powerFeatures(q: LiveQuery): Promise<FeatureCollection> {
   return { type: "FeatureCollection", features };
 }
 
+function publicStill(tags: Record<string, string>): string | null {
+  const raw =
+    tags["contact:webcam"] ||
+    tags["contact:webcam:url"] ||
+    tags.image ||
+    tags["camera:image"] ||
+    tags.website ||
+    tags.url ||
+    "";
+  const url = raw.split(";")[0]?.trim() ?? "";
+  if (!url.startsWith("https://") || url.length > 300) return null;
+  return url;
+}
+
+type NmCamera = {
+  name: string;
+  title: string;
+  lat: number;
+  lon: number;
+  grouping: string;
+  cameraType: string;
+};
+
+let nmCameras: { at: number; cams: NmCamera[] } | null = null;
+
+function snapshotName(file: string): string | null {
+  const base = file.split("/").pop()?.replace(/\.jpe?g$/i, "") ?? "";
+  return /^[a-z0-9_-]{1,80}$/i.test(base) ? base : null;
+}
+
+async function newMexicoCameras(): Promise<NmCamera[]> {
+  if (nmCameras && Date.now() - nmCameras.at < 5 * 60_000) return nmCameras.cams;
+  const data = (await fetchJson("https://servicev4.nmroads.com/RealMapWAR/GetCameraInfo", 12_000)) as {
+    cameraInfo?: Array<Record<string, unknown>>;
+  } | null;
+  const cams: NmCamera[] = [];
+  for (const row of data?.cameraInfo ?? []) {
+    if (row.enabled === false) continue;
+    const lat = Number(row.lat);
+    const lon = Number(row.lon);
+    const name = snapshotName(String(row.snapshotFile ?? ""));
+    if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    cams.push({
+      name,
+      title: String(row.title || row.name || name),
+      lat,
+      lon,
+      grouping: String(row.grouping ?? ""),
+      cameraType: String(row.cameraType ?? "CCTV"),
+    });
+  }
+  nmCameras = { at: Date.now(), cams };
+  return cams;
+}
+
+export async function nmCameraStill(name: string): Promise<Uint8Array | null> {
+  if (!/^[a-z0-9_-]{1,80}$/i.test(name)) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`http://ss.nmroads.com/snapshots/${name}.jpg`, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    const type = res.headers.get("content-type") ?? "";
+    if (!type.includes("image")) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const stillAllow = new Map<string, number>();
+
+function allowStill(url: string) {
+  if (!url.startsWith("http://") && !url.startsWith("https://")) return;
+  if (url.length > 500) return;
+  stillAllow.set(url, Date.now() + 10 * 60_000);
+  if (stillAllow.size > 4000) {
+    const now = Date.now();
+    for (const [key, until] of stillAllow) {
+      if (until < now) stillAllow.delete(key);
+    }
+  }
+}
+
+function publicHttpUrl(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  const host = url.hostname.toLowerCase();
+  if (
+    host === "localhost" ||
+    host.endsWith(".local") ||
+    host === "0.0.0.0" ||
+    /^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host)
+  ) {
+    return null;
+  }
+  if (raw.length > 800) return null;
+  return url.toString();
+}
+
+export async function allowedCctvStill(raw: string): Promise<Uint8Array | null> {
+  const target = publicHttpUrl(raw);
+  if (!target) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(target, { signal: ctrl.signal, headers: { Accept: "image/*" } });
+    if (!res.ok) return null;
+    const type = res.headers.get("content-type") ?? "";
+    if (!type.includes("image")) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function proxyCameraStream(raw: string): Promise<{ body: Uint8Array; type: string } | null> {
+  const target = publicHttpUrl(raw);
+  if (!target || !target.startsWith("https://")) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12_000);
+  try {
+    const origin = new URL(target).origin;
+    const host = new URL(target).hostname;
+    const referer = host.endsWith("earthcam.com") ? "https://www.earthcam.com/" : `${origin}/`;
+    const res = await fetch(target, {
+      signal: ctrl.signal,
+      headers: {
+        Accept: "*/*",
+        Referer: referer,
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+    if (!res.ok) return null;
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength > 12_000_000) return null;
+    const head = new TextDecoder().decode(buf.slice(0, 24));
+    const type = res.headers.get("content-type") ?? "";
+    if (head.startsWith("#EXTM3U") || type.includes("mpegurl") || target.includes(".m3u8")) {
+      const playlist = new TextDecoder().decode(buf);
+      const rewritten = playlist
+        .split("\n")
+        .map((line) => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) return line;
+          const abs = new URL(trimmed, target).toString();
+          return `/api/live?kind=cctv-hls&url=${encodeURIComponent(abs)}`;
+        })
+        .join("\n");
+      return { body: new TextEncoder().encode(rewritten), type: "application/vnd.apple.mpegurl" };
+    }
+    return { body: buf, type: type || "video/mp2t" };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+type MarkerIndex = {
+  at: number;
+  ids: string[];
+  lats: number[];
+  lngs: number[];
+  fts: number[];
+  cells: Map<string, number[]>;
+};
+let markerIndex: MarkerIndex | null = null;
+
+function cellKey(lat: number, lng: number): string {
+  return `${Math.floor(lat)}:${Math.floor(lng)}`;
+}
+
+function buildCells(lats: number[], lngs: number[]): Map<string, number[]> {
+  const cells = new Map<string, number[]>();
+  for (let i = 0; i < lats.length; i++) {
+    const key = cellKey(lats[i]!, lngs[i]!);
+    const bucket = cells.get(key);
+    if (bucket) bucket.push(i);
+    else cells.set(key, [i]);
+  }
+  return cells;
+}
+
+async function openCctvIndex(): Promise<MarkerIndex | null> {
+  if (markerIndex) return markerIndex;
+  try {
+    const candidates = [
+      fileURLToPath(new URL("../../data/cctv-markers.json", import.meta.url)),
+      `${process.cwd()}/data/cctv-markers.json`,
+    ];
+    let raw = "";
+    for (const path of candidates) {
+      try {
+        raw = await readFile(path, "utf8");
+        break;
+      } catch {
+        raw = "";
+      }
+    }
+    if (!raw) return null;
+    const data = JSON.parse(raw) as {
+      ids?: string[];
+      lats?: number[];
+      lngs?: number[];
+      fts?: number[];
+    };
+    if (!data.ids || !data.lats || !data.lngs || data.ids.length !== data.lats.length) return null;
+    markerIndex = {
+      at: Date.now(),
+      ids: data.ids,
+      lats: data.lats,
+      lngs: data.lngs,
+      fts: data.fts ?? [],
+      cells: buildCells(data.lats, data.lngs),
+    };
+    return markerIndex;
+  } catch {
+    return null;
+  }
+}
+
+async function openCctvBatch(ids: string[]): Promise<Array<Record<string, unknown>>> {
+  if (!ids.length) return [];
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12_000);
+  try {
+    const res = await fetch("https://opencctv.org/api/cameras/batch", {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; KiyoshisEyeView/1.0)",
+        Referer: "https://opencctv.org/",
+      },
+      body: JSON.stringify({ ids: ids.slice(0, 50) }),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as unknown;
+    return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+type CamRow = { id: string; lat: number; lng: number; live: number };
+const cellCache = new Map<string, CamRow[]>();
+
+async function loadCameraCell(latCell: number, lngCell: number): Promise<CamRow[]> {
+  const key = `${latCell}_${lngCell}`;
+  const cached = cellCache.get(key);
+  if (cached) return cached;
+  const candidates = [
+    fileURLToPath(new URL(`../../data/cctv/cells/${key}.json`, import.meta.url)),
+    `${process.cwd()}/data/cctv/cells/${key}.json`,
+    `${process.cwd()}/public/cctv/${key}.json`,
+  ];
+  for (const path of candidates) {
+    try {
+      const rows = JSON.parse(await readFile(path, "utf8")) as Array<[string, number, number, number]>;
+      const cams = rows.map(([id, lat, lng, live]) => ({ id, lat, lng, live }));
+      cellCache.set(key, cams);
+      return cams;
+    } catch {
+      /* try the next location */
+    }
+  }
+  cellCache.set(key, []);
+  return [];
+}
+
+function inCameraView(lon: number, lat: number, q: LiveQuery): boolean {
+  if (q.west == null || q.south == null || q.east == null || q.north == null) return false;
+  if (lat < q.south || lat > q.north) return false;
+  if (q.west <= q.east) return lon >= q.west && lon <= q.east;
+  return lon >= q.west || lon <= q.east;
+}
+
+function cameraPhoto(feed: string): string {
+  if (feed.startsWith("https://")) return feed;
+  allowStill(feed);
+  return `/api/live?kind=cctv-still&url=${encodeURIComponent(feed)}`;
+}
+
+function youtubeEmbed(feed: string): string {
+  try {
+    const url = new URL(feed);
+    const host = url.hostname.replace(/^www\./, "");
+    if (host !== "youtube.com" && host !== "m.youtube.com" && host !== "youtu.be") return "";
+    let id = "";
+    if (host === "youtu.be") id = url.pathname.split("/").filter(Boolean)[0] ?? "";
+    else if (url.pathname.startsWith("/embed/")) id = url.pathname.split("/")[2] ?? "";
+    else if (url.pathname.startsWith("/live/")) id = url.pathname.split("/")[2] ?? "";
+    else id = url.searchParams.get("v") ?? "";
+    if (!/^[\w-]{6,}$/.test(id)) return "";
+    return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&playsinline=1`;
+  } catch {
+    return "";
+  }
+}
+
+function cameraTitle(id: string): string {
+  return id
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+async function cameraDetail(id: string): Promise<FeatureCollection> {
+  const rows = await openCctvBatch([id]);
+  const row = rows[0];
+  if (!row) return empty();
+  const lat = Number(row.lat);
+  const lon = Number(row.lng);
+  const feed = String(row.feed_url ?? "");
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return empty();
+  const embed = youtubeEmbed(feed) || (row.feed_type === "iframe" && feed.startsWith("https://") ? feed : "");
+  const stream = row.feed_type === "m3u8" || feed.includes(".m3u8");
+  const live = Boolean(embed) || stream;
+  const place = [row.city, row.state, row.country].filter(Boolean).join(", ");
+  const facts = [
+    { label: "Id", value: id },
+    { label: "Kind", value: live ? "Live video" : String(row.category || "Still") },
+    place ? { label: "Place", value: place } : null,
+    row.country ? { label: "Country", value: String(row.country) } : null,
+    row.source ? { label: "Source", value: String(row.source) } : null,
+    { label: "Picture", value: embed ? "Live embed" : stream ? "Live video feed" : "Public still" },
+  ].filter((fact): fact is { label: string; value: string } => Boolean(fact));
+  return {
+    type: "FeatureCollection",
+    features: [
+      point(lon, lat, {
+        kind: "camera",
+        title: String(row.name || cameraTitle(id)),
+        detail: live ? `${place || "Public camera"} · live video` : `${place || "Public camera"} · still`,
+        source: String(row.source || "Public camera directory"),
+        live: live ? 1 : 0,
+        ...(embed ? { embed } : {}),
+        ...(stream && feed.startsWith("https://")
+          ? { video: `/api/live?kind=cctv-hls&url=${encodeURIComponent(feed)}` }
+          : {}),
+        ...(!live && feed.startsWith("http") ? { photo: cameraPhoto(feed) } : {}),
+        facts: JSON.stringify(facts),
+      }),
+    ],
+  };
+}
+
+async function cctvFeatures(q: LiveQuery): Promise<FeatureCollection> {
+  if (q.name) return cameraDetail(q.name);
+  const zoom = q.zoom ?? 0;
+  if (q.west == null || q.south == null || q.east == null || q.north == null || zoom < 4) {
+    return empty();
+  }
+  const features: Feature[] = [];
+  const lngSpans: Array<[number, number]> =
+    q.west <= q.east
+      ? [[q.west, q.east]]
+      : [
+          [q.west, 180],
+          [-180, q.east],
+        ];
+  const cellIds: Array<[number, number]> = [];
+  for (let latCell = Math.floor(q.south); latCell <= Math.floor(q.north); latCell++) {
+    for (const [west, east] of lngSpans) {
+      for (let lngCell = Math.floor(west); lngCell <= Math.floor(east); lngCell++) {
+        cellIds.push([latCell, lngCell]);
+      }
+    }
+  }
+  const stride = Math.max(1, Math.ceil(cellIds.length / 12));
+  const chosen: Array<[number, number]> = [];
+  for (let i = 0; i < cellIds.length && chosen.length < 12; i += stride) chosen.push(cellIds[i]!);
+  const loaded = await Promise.all(chosen.map(([latCell, lngCell]) => loadCameraCell(latCell, lngCell)));
+  const live: CamRow[] = [];
+  const still: CamRow[] = [];
+  for (const cams of loaded) {
+    for (const cam of cams) {
+      if (!inCameraView(cam.lng, cam.lat, q)) continue;
+      if (cam.live) live.push(cam);
+      else still.push(cam);
+    }
+  }
+  const picked = live.slice(0, 80);
+  const room = Math.max(0, 420 - picked.length);
+  const step = Math.max(1, Math.ceil(still.length / Math.max(room, 1)));
+  for (let i = 0; i < still.length && picked.length < 420; i += step) picked.push(still[i]!);
+  for (const cam of picked) {
+    features.push(
+      point(cam.lng, cam.lat, {
+        kind: "camera",
+        title: cameraTitle(cam.id),
+        detail: cam.live ? "Live video. Click to open the feed." : "Public camera. Click to open the still.",
+        source: "Public camera directory",
+        live: cam.live ? 1 : 0,
+        facts: JSON.stringify([
+          { label: "Id", value: cam.id },
+          { label: "Picture", value: cam.live ? "Live video feed" : "Public still" },
+        ]),
+      }),
+    );
+  }
+  const span = Math.abs(q.east - q.west) * Math.abs(q.north - q.south);
+  const overNewMexico =
+    q.east > -109.1 && q.west < -103 && q.north > 31.3 && q.south < 37.1;
+  if (span <= 40 && overNewMexico) {
+    const cams = await newMexicoCameras();
+    for (const cam of cams) {
+      if (!inCameraView(cam.lon, cam.lat, q)) continue;
+      if (features.some((feat) => feat.geometry.type === "Point" && Math.abs(feat.geometry.coordinates[0]! - cam.lon) < 0.01 && Math.abs(feat.geometry.coordinates[1]! - cam.lat) < 0.01)) {
+        continue;
+      }
+      const facts = [
+        { label: "Kind", value: cam.cameraType || "Traffic camera" },
+        { label: "Operator", value: "NM Roads" },
+        cam.grouping ? { label: "Area", value: cam.grouping } : null,
+        { label: "Picture", value: "Live still from the state traffic camera" },
+      ].filter((fact): fact is { label: string; value: string } => Boolean(fact));
+      features.push(
+        point(cam.lon, cam.lat, {
+          kind: "camera",
+          title: cam.title,
+          detail: "NM Roads traffic camera · live still",
+          source: "NM Roads",
+          photo: `/api/live?kind=cctv-still&name=${encodeURIComponent(cam.name)}`,
+          facts: JSON.stringify(facts),
+        }),
+      );
+    }
+  }
+  if (zoom >= 13 && span <= 0.4) {
+    const bbox = `${q.south.toFixed(4)},${q.west.toFixed(4)},${q.north.toFixed(4)},${q.east.toFixed(4)}`;
+    const body = `[out:json][timeout:16];(node["man_made"="surveillance"](${bbox});node["highway"="speed_camera"](${bbox});node["contact:webcam"](${bbox}););out 160;`;
+    const elements = await overpassQuery(body);
+    for (const el of elements) {
+      if (el.lat == null || el.lon == null) continue;
+      const tags = el.tags ?? {};
+      const still = publicStill(tags);
+      const role =
+        tags.highway === "speed_camera"
+          ? "Speed camera"
+          : tags["camera:type"] || tags["surveillance:type"] || tags.surveillance || "Camera";
+      const title = tags.name || tags.operator || role;
+      const facts = [
+        { label: "Kind", value: role },
+        tags.operator ? { label: "Operator", value: tags.operator } : null,
+        tags.direction || tags["camera:direction"]
+          ? { label: "Direction", value: tags.direction || tags["camera:direction"] || "" }
+          : null,
+        tags["surveillance:zone"] ? { label: "Watches", value: tags["surveillance:zone"] } : null,
+        {
+          label: "Picture",
+          value: still ? "Public still published on the camera" : "Mapped in OpenStreetMap. No public still.",
+        },
+      ].filter((fact): fact is { label: string; value: string } => Boolean(fact));
+      features.push(
+        point(el.lon, el.lat, {
+          kind: "camera",
+          title,
+          detail: still ? `${role} · public still` : `${role} · mapped, no feed`,
+          source: "OpenStreetMap",
+          ...(still ? { photo: still } : {}),
+          facts: JSON.stringify(facts),
+        }),
+      );
+    }
+  }
+  return { type: "FeatureCollection", features };
+}
+
 async function overpassFeatures(q: LiveQuery): Promise<Feature[]> {
   const zoom = q.zoom ?? 0;
   if (
@@ -1989,6 +2473,8 @@ export async function loadLiveFeed(q: LiveQuery): Promise<FeatureCollection> {
       return weatherFeatures(q);
     case "power":
       return powerFeatures(q);
+    case "cctv":
+      return cctvFeatures(q);
     default:
       return empty();
   }
