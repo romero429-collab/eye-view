@@ -32,6 +32,7 @@ import type {
 import { boundsAround, cctvInView } from "@/lib/cctv-view";
 import { HOME_ROTATION } from "@/lib/map-types";
 import { GlobeFallback } from "@/components/globe-fallback";
+import { webglProfile } from "@/lib/webgl";
 import { briefFromProperties, mergeFacts, weatherFacts } from "@/lib/weather";
 import { readRadarPixel, tileOf } from "@/lib/radar";
 import { WEATHER_LEVELS, type WeatherLevelId } from "@/lib/weather-levels";
@@ -2125,6 +2126,7 @@ function featureToObject(
         ? props.video
         : null,
     embed: typeof props.embed === "string" && props.embed.startsWith("https://") ? props.embed : null,
+    whep: typeof props.whep === "string" && props.whep.startsWith("https://") ? props.whep : null,
     lng: lngLat?.lng,
     lat: lngLat?.lat,
   };
@@ -2522,6 +2524,12 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
     };
 
     const start = async () => {
+      const gpu = webglProfile();
+      if (gpu.mode === "fallback") {
+        setLoadError("This device has no WebGL. Showing the local globe.");
+        setUseFallback(true);
+        return;
+      }
       const ml = await import("maplibre-gl");
       try {
         const worker = await import(
@@ -2550,6 +2558,9 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
         renderWorldCopies: false,
         fadeDuration: 0,
         cancelPendingTileRequestsWhileZooming: true,
+        pixelRatio: gpu.pixelRatio,
+        maxTileCacheSize: gpu.maxTileCacheSize,
+        refreshExpiredTiles: true,
       });
       mapRef.current = map;
       map.touchZoomRotate.enable();
@@ -2568,6 +2579,11 @@ export const WorldMap = forwardRef<WorldMapHandle, WorldMapProps>(function World
           setLoadError("Map engine failed. Showing local globe.");
           setUseFallback(true);
         }
+      });
+      map.getCanvas().addEventListener("webglcontextlost", (event) => {
+        event.preventDefault();
+        setLoadError("The graphics card dropped the map. Showing local globe.");
+        setUseFallback(true);
       });
 
       const emitView = () => {

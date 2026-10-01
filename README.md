@@ -55,3 +55,20 @@ npm run dev
 ```
 
 TanStack Start + MapLibre GL JS 6 globe. Auth and database are off.
+
+## Same app on any machine
+
+The repo is the whole program. Camera squares are in `public/cctv` and `data/cctv`. There is no key to request and nothing to copy out of this workspace.
+
+```bash
+git clone https://github.com/romero429-collab/eye-view.git
+cd eye-view
+npm install
+npm run dev
+```
+
+Open `http://localhost:8080`. Another computer stays current with `git pull`. Every push to `main` runs typecheck and tests in GitHub Actions, so a broken tree does not sit there quietly.
+
+The globe uses WebGL 2 when the machine has it, and a lighter tile cache when the GPU is weak. If there is no WebGL, or the graphics context dies, the map switches to the local SVG globe instead of a blank screen.
+
+Live cameras play as a still, an HLS playlist, a YouTube embed, or WebRTC when the operator publishes a WHEP address. A private RTSP stream cannot play in the browser. A feed that is offline at the source stays offline. No license in this repo unlocks a camera the operator did not publish.

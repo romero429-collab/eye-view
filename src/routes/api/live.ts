@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { allowedCctvStill, loadLiveFeed, nmCameraStill, proxyCameraStream, type LiveKind } from "@/lib/live-server";
+import { allowedCctvStill, loadLiveFeed, nmCameraStill, proxyCameraStream, proxyWhep, type LiveKind } from "@/lib/live-server";
 
 const KINDS = new Set<LiveKind>([
   "transit",
@@ -79,6 +79,18 @@ export const Route = createFileRoute("/api/live")({
           ...collection,
           updatedAt: Date.now(),
           count: collection.features.length,
+        });
+      },
+      POST: async ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("kind") !== "cctv-whep") {
+          return Response.json({ error: "Unknown live feed" }, { status: 400 });
+        }
+        const answered = await proxyWhep(url.searchParams.get("url") ?? "", await request.text());
+        if (!answered) return new Response(null, { status: 404 });
+        return new Response(answered.body, {
+          status: answered.status,
+          headers: { "content-type": "application/sdp" },
         });
       },
     },

@@ -45,6 +45,7 @@ export type MapObject = {
   photo?: string | null;
   video?: string | null;
   embed?: string | null;
+  whep?: string | null;
   lng?: number;
   lat?: number;
   /** Zone memory — present when this pick is a mutable district. */

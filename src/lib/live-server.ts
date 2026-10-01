@@ -13,6 +13,7 @@ import {
   type GbifOccurrence,
   type GbifVernacular,
 } from "./gbif.ts";
+import { isWhep } from "./streams.ts";
 import { lidarCoverageLine, pickElevation, inUsgsCoverage } from "./ground.ts";
 import { shotsFromPanoramax } from "./street.ts";
 import { parseAlerts, parseForecast, parseMetNo, parseNws, type WeatherBrief } from "./weather.ts";
@@ -1234,6 +1235,26 @@ export async function allowedCctvStill(raw: string): Promise<Uint8Array | null> 
   }
 }
 
+export async function proxyWhep(raw: string, sdp: string): Promise<{ status: number; body: string } | null> {
+  const target = publicHttpUrl(raw);
+  if (!target || !target.startsWith("https://") || !/\/whep\b/i.test(target)) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12_000);
+  try {
+    const res = await fetch(target, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: { "Content-Type": "application/sdp", Accept: "application/sdp" },
+      body: sdp.slice(0, 50_000),
+    });
+    return { status: res.status, body: await res.text() };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function proxyCameraStream(raw: string): Promise<{ body: Uint8Array; type: string } | null> {
   const target = publicHttpUrl(raw);
   if (!target || !target.startsWith("https://")) return null;
@@ -1436,9 +1457,10 @@ async function cameraDetail(id: string): Promise<FeatureCollection> {
   const lon = Number(row.lng);
   const feed = String(row.feed_url ?? "");
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return empty();
-  const embed = youtubeEmbed(feed) || (row.feed_type === "iframe" && feed.startsWith("https://") ? feed : "");
-  const stream = row.feed_type === "m3u8" || feed.includes(".m3u8");
-  const live = Boolean(embed) || stream;
+  const whep = isWhep(feed, String(row.feed_type ?? ""));
+  const embed = whep ? "" : youtubeEmbed(feed) || (row.feed_type === "iframe" && feed.startsWith("https://") ? feed : "");
+  const stream = !whep && (row.feed_type === "m3u8" || feed.includes(".m3u8"));
+  const live = Boolean(embed) || stream || whep;
   const place = [row.city, row.state, row.country].filter(Boolean).join(", ");
   const facts = [
     { label: "Id", value: id },
@@ -1446,7 +1468,7 @@ async function cameraDetail(id: string): Promise<FeatureCollection> {
     place ? { label: "Place", value: place } : null,
     row.country ? { label: "Country", value: String(row.country) } : null,
     row.source ? { label: "Source", value: String(row.source) } : null,
-    { label: "Picture", value: embed ? "Live embed" : stream ? "Live video feed" : "Public still" },
+    { label: "Picture", value: whep ? "WebRTC live" : embed ? "Live embed" : stream ? "Live video feed" : "Public still" },
   ].filter((fact): fact is { label: string; value: string } => Boolean(fact));
   return {
     type: "FeatureCollection",
@@ -1457,6 +1479,7 @@ async function cameraDetail(id: string): Promise<FeatureCollection> {
         detail: live ? `${place || "Public camera"} · live video` : `${place || "Public camera"} · still`,
         source: String(row.source || "Public camera directory"),
         live: live ? 1 : 0,
+        ...(whep ? { whep: feed } : {}),
         ...(embed ? { embed } : {}),
         ...(stream && feed.startsWith("https://")
           ? { video: `/api/live?kind=cctv-hls&url=${encodeURIComponent(feed)}` }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LAYER_META, OBJECT_META } from "@/lib/layer-meta";
@@ -6,6 +6,7 @@ import { OVERLAYS, QUAKES_URL } from "@/lib/basemaps";
 import type { MapObject } from "@/lib/map-types";
 import { formatDecimal, type PerceptionFrame } from "@/lib/perception";
 import { formatKm, hitsFromCollection, nearbyHits, type NearbyHit } from "@/lib/nearby";
+import { playWhep } from "@/lib/streams";
 import { cn } from "@/lib/utils";
 
 type ObjectPanelProps = {
@@ -17,6 +18,43 @@ type ObjectPanelProps = {
   showKey?: boolean;
   className?: string;
 };
+
+function WhepView({ url }: { url: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    let stop = () => {};
+    const ctrl = new AbortController();
+    void playWhep(video, url, ctrl.signal)
+      .then((close) => {
+        stop = close;
+      })
+      .catch(() => setFailed(true));
+    return () => {
+      ctrl.abort();
+      stop();
+    };
+  }, [url]);
+  if (failed) {
+    return (
+      <p className="mt-3 rounded-[var(--radius-sm)] bg-black px-3 py-6 text-center text-sm text-muted">
+        This WebRTC feed did not answer. The camera has to publish a WHEP address.
+      </p>
+    );
+  }
+  return (
+    <video
+      ref={ref}
+      controls
+      autoPlay
+      muted
+      playsInline
+      className="mt-3 aspect-video w-full rounded-[var(--radius-sm)] bg-black"
+    />
+  );
+}
 
 function Sparkline({ values }: { values: number[] }) {
   if (values.length < 2) return null;
@@ -340,6 +378,8 @@ export function ObjectPanel({
                 allowFullScreen
                 className="mt-3 aspect-video w-full rounded-[var(--radius-sm)] bg-black"
               />
+            ) : object.whep ? (
+              <WhepView url={object.whep} />
             ) : object.video ? (
               videoFailed ? (
                 <p className="mt-3 rounded-[var(--radius-sm)] bg-black px-3 py-6 text-center text-sm text-muted">
