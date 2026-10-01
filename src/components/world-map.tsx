@@ -270,7 +270,9 @@ function buildStyle(): StyleSpecification {
       },
       "imagery-depth": {
         type: "raster",
-        tiles: [IMAGERY.find((item) => item.id === "depth")!.tiles],
+        tiles: [
+          "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
+        ],
         tileSize: 256,
         maxzoom: 13,
         attribution: TILE_ATTRIBUTION,
@@ -1762,6 +1764,7 @@ const OVERLAY_LAYERS: Record<keyof OverlayState, string[]> = {
   iot: ["iot"],
   power: ["power-line", "power-fill", "power-site"],
   cctv: ["cctv"],
+  ocean: ["imagery-depth"],
 };
 
 const POINT_HIT_LAYERS = [
@@ -2141,6 +2144,7 @@ function featureToObject(
         : null,
     embed: typeof props.embed === "string" && props.embed.startsWith("https://") ? props.embed : null,
     whep: typeof props.whep === "string" && props.whep.startsWith("https://") ? props.whep : null,
+    taken: typeof props.taken === "string" && props.taken.startsWith("Published ") ? props.taken : null,
     lng: lngLat?.lng,
     lat: lngLat?.lat,
   };

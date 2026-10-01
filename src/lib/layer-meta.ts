@@ -24,6 +24,7 @@ import {
   TriangleAlert,
   Type,
   Waypoints,
+  Waves,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -138,7 +139,12 @@ export const LAYER_META: Record<OverlayId, LayerMeta> = {
   cctv: {
     icon: Cctv,
     usage:
-      "Public cameras worldwide. Amber is a still. Red is a live video feed. Click a dot to open it. Dallas and every other city with a published camera are in the same index.",
+      "Public cameras worldwide. Amber is a still. Red is a live video feed. Click a dot to open it. The line under a still is when that file was last written.",
+  },
+  ocean: {
+    icon: Waves,
+    usage:
+      "Esri ocean bathymetry, the depth of the seafloor. It covers the satellite while it is on, and it stays coarse past zoom 13. It is not a view through the water.",
   },
 };
 

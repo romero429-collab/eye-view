@@ -295,6 +295,12 @@ export function ObjectPanel({
   const layerRows = facts.filter((fact) => !PLACE_LABELS.has(fact.label) && !TILE_LABELS.has(fact.label));
   const placeRows = facts.filter((fact) => PLACE_LABELS.has(fact.label) && !TILE_LABELS.has(fact.label) && fact.label !== "Look-at");
   const band = facts.find((fact) => fact.label === "Band")?.value ?? "";
+  const pictured =
+    object?.taken ||
+    (object?.photo
+      ? facts.find((fact) => fact.label === "When" || fact.label === "Published")?.value
+      : "") ||
+    "";
 
   useEffect(() => {
     setPicture(null);
@@ -410,6 +416,11 @@ export function ObjectPanel({
                   className="h-36 w-full rounded-[var(--radius-sm)] object-cover"
                 />
               </button>
+            ) : null}
+            {object.photo && pictured ? (
+              <p className="mt-1.5 text-xs leading-snug text-muted">
+                {pictured.startsWith("Published ") ? pictured : `Seen ${pictured}`}
+              </p>
             ) : null}
             {object.trend && object.trend.length > 1 ? (
               <div className="mt-3">

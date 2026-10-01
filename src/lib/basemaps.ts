@@ -22,7 +22,8 @@ export type OverlayId =
   | "events"
   | "iot"
   | "power"
-  | "cctv";
+  | "cctv"
+  | "ocean";
 
 export type OverlayGroup = "map" | "animals" | "live";
 
@@ -184,6 +185,13 @@ export const OVERLAYS: OverlayDef[] = [
     live: true,
     group: "live",
   },
+  {
+    id: "ocean",
+    label: "Ocean",
+    blurb: "Seafloor depth. Covers the satellite while it is on.",
+    live: false,
+    group: "map",
+  },
 ];
 
 export const DEFAULT_OVERLAYS: OverlayState = {
@@ -209,6 +217,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   iot: false,
   power: false,
   cctv: false,
+  ocean: false,
 };
 
 export function gibsNdviTileUrl(): string {
@@ -244,7 +253,7 @@ export const TILES = {
     "https://tiles.arcgis.com/tiles/KzeiCaQsMoeCfoCq/arcgis/rest/services/Regrid_Nationwide_Parcel_Boundaries_v1/MapServer/tile/{z}/{y}/{x}",
 } as const;
 
-export type ImageryId = "esri" | "viirs" | "modis" | "sentinel" | "usgs" | "depth";
+export type ImageryId = "esri" | "viirs" | "modis" | "sentinel" | "usgs";
 
 /** Pictures of the ground, not overlays. One is visible at a time. */
 export const IMAGERY: Array<{
@@ -294,14 +303,6 @@ export const IMAGERY: Array<{
     tiles: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
     maxzoom: 16,
     layerId: "imagery-usgs",
-  },
-  {
-    id: "depth",
-    label: "Depth",
-    detail: "Seafloor depth from the Esri ocean basemap. A colored depth picture, not a swim through the water. It stays coarse past zoom 13.",
-    tiles: "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
-    maxzoom: 13,
-    layerId: "imagery-depth",
   },
 ];
 

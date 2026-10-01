@@ -1436,6 +1436,57 @@ function cameraPhoto(feed: string): string {
   return `/api/live?kind=cctv-still&url=${encodeURIComponent(feed)}`;
 }
 
+async function imagePublished(url: string): Promise<string> {
+  if (!url.startsWith("http://") && !url.startsWith("https://")) return "";
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const head = await fetch(url, { method: "HEAD", signal: ctrl.signal, redirect: "follow" });
+    const stamped = head.headers.get("last-modified");
+    if (head.ok && stamped) return stamped;
+    const got = await fetch(url, {
+      method: "GET",
+      signal: ctrl.signal,
+      redirect: "follow",
+      headers: { Range: "bytes=0-0" },
+    });
+    return got.headers.get("last-modified") ?? "";
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function publishedLine(raw: string, timeZone?: string): string {
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+  const utc = new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+  if (!timeZone) return `Published ${utc}`;
+  try {
+    const local = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(date);
+    return `Published ${local} · file ${utc}`;
+  } catch {
+    return `Published ${utc}`;
+  }
+}
+
 function youtubeEmbed(feed: string): string {
   try {
     const url = new URL(feed);
@@ -1474,6 +1525,11 @@ async function cameraDetail(id: string): Promise<FeatureCollection> {
   const stream = play === "hls";
   const live = Boolean(embed) || stream || whep;
   const place = [row.city, row.state, row.country].filter(Boolean).join(", ");
+  const zone = typeof row.timezone === "string" ? row.timezone : "";
+  const published =
+    play === "image" || play === "hls"
+      ? publishedLine(await imagePublished(feed), zone)
+      : publishedLine(String(row.feed_last_modified ?? ""), zone);
   const facts = [
     { label: "Id", value: id },
     { label: "Kind", value: live ? "Live video" : play === "rtsp" ? "RTSP" : String(row.category || "Still") },
@@ -1493,6 +1549,7 @@ async function cameraDetail(id: string): Promise<FeatureCollection> {
                 ? "Live video feed"
                 : "Public still",
     },
+    published ? { label: "Published", value: published.replace(/^Published /, "") } : null,
   ].filter((fact): fact is { label: string; value: string } => Boolean(fact));
   return {
     type: "FeatureCollection",
@@ -1503,6 +1560,7 @@ async function cameraDetail(id: string): Promise<FeatureCollection> {
         detail: live ? `${place || "Public camera"} · live video` : `${place || "Public camera"} · still`,
         source: String(row.source || "Public camera directory"),
         live: live ? 1 : 0,
+        ...(published ? { taken: published } : {}),
         ...(whep ? { whep: feed } : {}),
         ...(embed ? { embed } : {}),
         ...(stream && feed.startsWith("https://")
